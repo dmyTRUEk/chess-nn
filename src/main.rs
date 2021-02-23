@@ -370,11 +370,6 @@ struct Player {
     pub rating: f32,
 }
 
-struct NNPair {
-    pub nn_white: NeuralNetwork,
-    pub nn_black: NeuralNetwork,
-}
-
 fn logistic (x: f32) -> f32 {
     100.0 / ( 1.0 + 10.0_f32.powf(x/400.0) )
 }
@@ -396,7 +391,7 @@ fn logistic (x: f32) -> f32 {
 //     res_v
 // }
 
-fn play_tournament (nns_white: Vec<NeuralNetwork>, nns_black: Vec<NeuralNetwork>, loops_amount: u32, show_log: bool) -> NNPair {
+fn play_tournament (nns_white: Vec<NeuralNetwork>, nns_black: Vec<NeuralNetwork>, loops_amount: u32, show_log: bool) -> (NeuralNetwork, NeuralNetwork) {
     let default_rating: f32 = 1000.0;
     let mut players_white: Vec<Player> = nns_white.clone().into_iter().map(|nn| Player{nn: nn, rating: default_rating}).collect();
     let mut players_black: Vec<Player> = nns_black.clone().into_iter().map(|nn| Player{nn: nn, rating: default_rating}).collect();
@@ -501,34 +496,59 @@ fn play_tournament (nns_white: Vec<NeuralNetwork>, nns_black: Vec<NeuralNetwork>
     let player_black_best: Player = players_black_sorted[0].clone();
 
     if show_log {
-        let (whoWon, game_moves): (EnumWhoWon, String) = play_game(player_white_best.nn.clone(), player_black_best.nn.clone(), false);
-        println!("game_moves of best NNs: '{}'", game_moves);
+        let (_who_won, game_moves): (EnumWhoWon, String) = play_game(player_white_best.nn.clone(), player_black_best.nn.clone(), false);
+        println!("game_moves of best NNs: '{}'\n\n", game_moves);
     }
 
-    NNPair {
-        nn_white: player_white_best.nn,
-        nn_black: player_black_best.nn,
-    }
+    (player_white_best.nn, player_black_best.nn)
 }
 
 
 
 fn main () {
-    let nn_heights: Vec<usize> = vec![64, 100, 100, 100, 1];
+    // let nn_heights: Vec<usize> = vec![64, 100, 100, 100, 1];
+    let nn_heights: Vec<usize> = vec![64, 100, 100, 1];
     // let nn_heights: Vec<usize> = vec![64, 100, 1];
 
     let weight_min: f32 = -1.0;
     let weight_max: f32 = 1.0;
 
-    let player_amount: usize = 100;
-    let loops_amount: u32 = 1;
+    let players_amount: usize = 5;
 
-    play_tournament(
-        (0..player_amount).map(|_i| create_nn_with_random_weights(&nn_heights.clone(), weight_min, weight_max)).collect(),
-        (0..player_amount).map(|_i| create_nn_with_random_weights(&nn_heights.clone(), weight_min, weight_max)).collect(),
-        loops_amount,
-        true
-    );
+    let mut nns_white: Vec<NeuralNetwork> = (0..players_amount).map(|_i| create_nn_with_random_weights(&nn_heights.clone(), weight_min, weight_max)).collect();
+    let mut nns_black: Vec<NeuralNetwork> = (0..players_amount).map(|_i| create_nn_with_random_weights(&nn_heights.clone(), weight_min, weight_max)).collect();
+
+    let generations: u32 = 100;
+
+
+    for generation in 0..generations {
+        println!("generation: {} / {}", generation, generations);
+
+        let loops_amount: u32 = 1;
+        let (nn_white_best, nn_black_best): (NeuralNetwork, NeuralNetwork) = play_tournament(
+            nns_white.clone(), nns_black.clone(),
+            loops_amount,
+            true
+        );
+
+        assert_eq!(nns_white.len(), nns_black.len());
+
+        for i in 0..nns_white.clone().len() {
+            nns_white[i] = nn_white_best.clone();
+            nns_black[i] = nn_black_best.clone();
+        }
+
+        fn generation_to_evolve_factor (g: u32, gens: u32) -> f32 {
+            return ( -(g as f32) / (gens as f32).sqrt() ).exp()
+        }
+
+        let evolution_factor = generation_to_evolve_factor(generation, generations);
+        for i in 1..nns_white.clone().len() {
+            nns_white[i].evolve(evolution_factor);
+            nns_black[i].evolve(evolution_factor);
+        }
+
+    }
 
 }
 

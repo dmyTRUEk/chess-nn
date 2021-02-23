@@ -3,6 +3,7 @@
 use std::fmt;
 
 use crate::neuron::*;
+use crate::random::*;
 
 
 
@@ -53,14 +54,14 @@ impl NeuralNetwork {
         }
 
         // set weights size = 0 for every neuron in first (0) layer
-        let mut height: usize = heights[0];
-        for h in 0..height {
+        // let height: usize = heights[0];
+        for h in 0..heights[0] {
             self.neurons[0][h].set_size(0);
         }
 
         // set weights size for neurons in all other layers
         for l in 1..layers {
-            height = heights[l];
+            let height = heights[l];
             for h in 0..height {
                 self.neurons[l][h].set_size(heights[l-1]);
             }
@@ -69,7 +70,7 @@ impl NeuralNetwork {
 
     pub fn process_input (&mut self, input: &Vec<f32>) -> Vec<f32> {
         let layers = self.neurons.len();
-        let mut height_this: usize;
+        // let mut height_this: usize;
         // let mut height_next: usize;
         
         // set results of neurons in first layer (input for nn)
@@ -81,7 +82,7 @@ impl NeuralNetwork {
         let mut input_for_next_layer: Vec<f32>;
 
         for l in 1..layers {
-            height_this = self.neurons[l].len();
+            let height_this = self.neurons[l].len();
             // height_next = self.neurons[l+1].len();
             input_for_next_layer = vec![0.0; height_this];
 
@@ -100,25 +101,40 @@ impl NeuralNetwork {
 
     pub fn init_weights_by_random (&mut self, weight_min: f32, weight_max: f32) {
         let layers = self.neurons.len();
-        let mut height_this: usize;
+        // let mut height_this: usize;
 
         for l in 0..layers {
-            height_this = self.neurons[l].len();
+            let height_this = self.neurons[l].len();
             for h in 0..height_this {
                 self.neurons[l][h].init_weights_by_random(weight_min, weight_max);
             }
         }
     }
 
-    // pub fn evolve (&mut self, evolution_factor: f32) {
-    //     assert!(0.0 < evolution_factor && evolution_factor < 1.0);
+    pub fn get_total_neurons (&self) -> u32 {
+        let layers = self.neurons.len();
+        let mut res: u32 = 0;
+        // from 1, because 0 layer doesnt calculate anything
+        for l in 1..layers {
+            res += self.neurons[l].len() as u32;
+        }
+        res
+    }
 
-    //     let total_neurons = {
-    //         for l in 0..la
-    //     }
+    pub fn evolve (&mut self, evolution_factor: f32) {
+        assert!(0.0 <= evolution_factor && evolution_factor <= 1.0);
 
-    //     let total_neurons: usize = self.neurons.into_iter().map(|neurons_layer| neurons_layer.len()).collect::<usize>().sum();
-    // }
+        // let layers = self.neurons.len();
+
+        let total_neurons: u32 = self.get_total_neurons();
+        let neurons_to_evolve: u32 = ((total_neurons as f32) * evolution_factor) as u32;
+
+        for _i in 0..neurons_to_evolve {
+            let l: usize = random_u32(0, self.neurons.len() as u32 - 1) as usize;
+            let h: usize = random_u32(0, self.neurons[l].len() as u32 - 1) as usize;
+            self.neurons[l][h].evolve(evolution_factor);
+        }
+    }
 }
 
 

@@ -3,7 +3,7 @@
 use std::fmt;
 
 use crate::activation_functions::activation_function;
-use crate::random::random_f32;
+use crate::random::*;
 
 
 
@@ -38,6 +38,25 @@ impl Neuron {
         }
         self.value = activation_function(sum);
         self.value
+    }
+
+    pub fn evolve (&mut self, evolution_factor: f32) {
+        assert!(0.0 <= evolution_factor && evolution_factor <= 1.0);
+
+        let total_weights: u32 = self.weights.len() as u32;
+        let weights_to_evolve = ((total_weights as f32) * evolution_factor) as u32;
+
+        for _i in 0..weights_to_evolve {
+            let h: usize = random_u32(0, total_weights-1) as usize;
+
+            if random_f32(-1.0, 1.0) > 0.0 {
+                self.weights[h] *= random_m1_p1() * (1.0 + evolution_factor);
+            }
+            else {
+                self.weights[h] *= random_m1_p1() / (1.0 + evolution_factor);
+            }
+        }
+
     }
 }
 

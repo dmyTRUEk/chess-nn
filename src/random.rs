@@ -36,6 +36,10 @@ pub fn random_f32 (min: f32, max: f32) -> f32 {
     (_good_random_f32()) * (max-min) + min
 }
 
+pub fn random_m1_p1 () -> f32 {
+    random_f32(-1.0, 1.0)
+}
+
 
 
 fn _good_random_u32 () -> u32 {
