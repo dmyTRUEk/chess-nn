@@ -44,17 +44,26 @@ impl Neuron {
         assert!(0.0 <= evolution_factor && evolution_factor <= 1.0);
 
         let total_weights: u32 = self.weights.len() as u32;
-        let weights_to_evolve = ((total_weights as f32) * evolution_factor) as u32;
+        let weights_to_evolve: u32 = ((total_weights as f32) * evolution_factor) as u32;
 
         for _i in 0..weights_to_evolve {
             let h: usize = random_u32(0, total_weights-1) as usize;
 
-            if random_f32(-1.0, 1.0) > 0.0 {
-                self.weights[h] *= random_m1_p1() * (1.0 + evolution_factor);
-            }
-            else {
-                self.weights[h] *= random_m1_p1() / (1.0 + evolution_factor);
-            }
+            self.weights[h] *= (random_m1_p1() as f32) *
+                if random_in_m1_p1() > 0.0 {
+                    1.0 * (1.0 + evolution_factor)
+                } else {
+                    1.0 / (1.0 + evolution_factor)
+                };
+
+            // if random_in_m1_p1() > 0.0 {
+            //     self.weights[h] *= (random_m1_p1() as f32) * (1.0 + evolution_factor);
+            //     // self.weights[h] *= (random_in_m1_p1() as f32) * (1.0 + evolution_factor);   // THIS LINE IS WRONG!
+            // }
+            // else {
+            //     self.weights[h] *= (random_m1_p1() as f32) / (1.0 + evolution_factor);
+            //     // self.weights[h] *= (random_in_m1_p1() as f32) / (1.0 + evolution_factor);   // THIS LINE IS WRONG!
+            // }
         }
 
     }

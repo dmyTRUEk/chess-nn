@@ -128,6 +128,7 @@ impl NeuralNetwork {
 
         let total_neurons: u32 = self.get_total_neurons();
         let neurons_to_evolve: u32 = ((total_neurons as f32) * evolution_factor) as u32;
+        // println!("neurons_to_evolve = {}", neurons_to_evolve);
 
         for _i in 0..neurons_to_evolve {
             let l: usize = random_u32(0, self.neurons.len() as u32 - 1) as usize;

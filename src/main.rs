@@ -461,7 +461,7 @@ fn play_tournament (nns_white: Vec<NeuralNetwork>, nns_black: Vec<NeuralNetwork>
             }
         }
 
-        if show_log {
+        if show_log && loops_amount > 1 {
             let ratings_white: Vec<f32> = players_white.clone().into_iter().map(|p| p.rating).collect();
             let ratings_black: Vec<f32> = players_black.clone().into_iter().map(|p| p.rating).collect();
             println!("\ncurrent ratings: \nplayers_white: {:?}\nplayers_black: {:?}\n", ratings_white, ratings_black);
@@ -497,7 +497,7 @@ fn play_tournament (nns_white: Vec<NeuralNetwork>, nns_black: Vec<NeuralNetwork>
 
     if show_log {
         let (_who_won, game_moves): (EnumWhoWon, String) = play_game(player_white_best.nn.clone(), player_black_best.nn.clone(), false);
-        println!("game_moves of best NNs: '{}'\n\n", game_moves);
+        println!("game_moves of best NNs: '{}'", game_moves);
     }
 
     (player_white_best.nn, player_black_best.nn)
@@ -509,11 +509,12 @@ fn main () {
     // let nn_heights: Vec<usize> = vec![64, 100, 100, 100, 1];
     let nn_heights: Vec<usize> = vec![64, 100, 100, 1];
     // let nn_heights: Vec<usize> = vec![64, 100, 1];
+    // let nn_heights: Vec<usize> = vec![64, 10, 1];
 
     let weight_min: f32 = -1.0;
     let weight_max: f32 = 1.0;
 
-    let players_amount: usize = 10;
+    let players_amount: usize = 3;
 
     let mut nns_white: Vec<NeuralNetwork> = (0..players_amount).map(|_i| create_nn_with_random_weights(&nn_heights.clone(), weight_min, weight_max)).collect();
     let mut nns_black: Vec<NeuralNetwork> = (0..players_amount).map(|_i| create_nn_with_random_weights(&nn_heights.clone(), weight_min, weight_max)).collect();
@@ -531,7 +532,10 @@ fn main () {
             true
         );
 
-        assert_eq!(nns_white.len(), nns_black.len());
+        // println!("nn_white_best = {}", nn_white_best);
+        // println!("nn_black_best = {}", nn_black_best);
+
+        // assert_eq!(nns_white.len(), nns_black.len());
 
         for i in 0..nns_white.clone().len() {
             nns_white[i] = nn_white_best.clone();
@@ -543,12 +547,16 @@ fn main () {
             ( -(g as f32) / (gens as f32) ).exp()
             // ( -(g as f32) / (gens as f32).powf(0.8) ).exp()
         }
-
         let evolution_factor = generation_to_evolve_factor(generation, generations);
+
+        println!("evolving with evolution_factor = {}", evolution_factor);
+
         for i in 1..nns_white.clone().len() {
             nns_white[i].evolve(evolution_factor);
             nns_black[i].evolve(evolution_factor);
         }
+
+        println!("\n");
 
     }
 
