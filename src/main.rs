@@ -513,12 +513,12 @@ fn main () {
     let weight_min: f32 = -1.0;
     let weight_max: f32 = 1.0;
 
-    let players_amount: usize = 5;
+    let players_amount: usize = 10;
 
     let mut nns_white: Vec<NeuralNetwork> = (0..players_amount).map(|_i| create_nn_with_random_weights(&nn_heights.clone(), weight_min, weight_max)).collect();
     let mut nns_black: Vec<NeuralNetwork> = (0..players_amount).map(|_i| create_nn_with_random_weights(&nn_heights.clone(), weight_min, weight_max)).collect();
 
-    let generations: u32 = 100;
+    let generations: u32 = 1000;
 
 
     for generation in 0..generations {
@@ -539,7 +539,9 @@ fn main () {
         }
 
         fn generation_to_evolve_factor (g: u32, gens: u32) -> f32 {
-            return ( -(g as f32) / (gens as f32).sqrt() ).exp()
+            // ( -(g as f32) / (gens as f32).sqrt() ).exp()
+            ( -(g as f32) / (gens as f32) ).exp()
+            // ( -(g as f32) / (gens as f32).powf(0.8) ).exp()
         }
 
         let evolution_factor = generation_to_evolve_factor(generation, generations);
