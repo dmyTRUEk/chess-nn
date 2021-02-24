@@ -7,7 +7,7 @@ use crate::random::*;
 
 
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct NeuralNetwork {
     pub neurons: Vec<Vec<Neuron>>,
 }
@@ -128,10 +128,11 @@ impl NeuralNetwork {
 
         let total_neurons: u32 = self.get_total_neurons();
         let neurons_to_evolve: u32 = ((total_neurons as f32) * evolution_factor) as u32;
+        // println!("total_neurons = {}", total_neurons);
         // println!("neurons_to_evolve = {}", neurons_to_evolve);
 
         for _i in 0..neurons_to_evolve {
-            let l: usize = random_u32(0, self.neurons.len() as u32 - 1) as usize;
+            let l: usize = random_u32(1, self.neurons.len() as u32 - 1) as usize;
             let h: usize = random_u32(0, self.neurons[l].len() as u32 - 1) as usize;
             self.neurons[l][h].evolve(evolution_factor);
         }
@@ -599,6 +600,18 @@ mod tests {
                 nn.neurons[i].len(),
                 h
             );
+        }
+    }
+
+    #[test]
+    fn test_evolution () {
+        let nn_heights: Vec<usize> = vec![100, 200, 50];
+        for _i in 0..100 {
+            // println!("i = {}/1000", i);
+            let nn1 = create_nn_with_random_weights(&nn_heights.clone(), -1.0, 1.0);
+            let mut nn2 = nn1.clone();
+            nn2.evolve(0.1);
+            assert_ne!(nn1, nn2);
         }
     }
 

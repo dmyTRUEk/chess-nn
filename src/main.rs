@@ -175,7 +175,7 @@ fn analyze(board: Board, mut nn: NeuralNetwork) -> f32 {
 
 fn wait_for_enter () {
     let mut line: String = String::new();
-    std::io::stdin().read_line(&mut line);
+    std::io::stdin().read_line(&mut line).unwrap();
 }
 
 
@@ -301,7 +301,7 @@ fn play_game (nn_white: NeuralNetwork, nn_black: NeuralNetwork, show_log: bool) 
 
     if move_n >= 150 {
         if show_log {
-            println!("game result: 300+ moves");
+            println!("game result: 150+ moves");
             println!("so winner will be calculated by pieces");
         }
         let mut piece_sum_white: f32 = 0.0;
@@ -486,7 +486,7 @@ fn play_tournament (nns_white: Vec<NeuralNetwork>, nns_black: Vec<NeuralNetwork>
         let ratings_white_sorted: Vec<f32> = players_white_sorted.clone().into_iter().map(|p| p.rating).collect();
         let ratings_black_sorted: Vec<f32> = players_black_sorted.clone().into_iter().map(|p| p.rating).collect();
 
-        println!("final ratings (sorted): \nplayers_white: {:?}\nplayers_black: {:?}",
+        println!("\nfinal ratings (sorted): \nplayers_white: {:?}\nplayers_black: {:?}",
             ratings_white_sorted,
             ratings_black_sorted
         );
@@ -507,22 +507,33 @@ fn play_tournament (nns_white: Vec<NeuralNetwork>, nns_black: Vec<NeuralNetwork>
 
 fn main () {
     // let nn_heights: Vec<usize> = vec![64, 100, 100, 100, 1];
-    let nn_heights: Vec<usize> = vec![64, 100, 100, 1];
+    let nn_heights: Vec<usize> = vec![64, 60, 40, 20, 1];
+    // let nn_heights: Vec<usize> = vec![64, 20, 20, 20, 1];
+    // let nn_heights: Vec<usize> = vec![64, 100, 100, 1];
     // let nn_heights: Vec<usize> = vec![64, 100, 1];
     // let nn_heights: Vec<usize> = vec![64, 10, 1];
+    // let nn_heights: Vec<usize> = vec![64, 1];
+    
+    assert!(nn_heights.len() >= 2, "nn_heights.len()={}, should be >= 2, else its useless", nn_heights.len());
+    assert!(nn_heights[0] == 64, "nn_heights[0]={}, should be == 64, else its impossible", nn_heights[0]);
+    assert!(nn_heights[nn_heights.len()-1] == 1, "nn_heights[last]={}, should be == 1, else its useless", nn_heights[nn_heights.len()-1]);
 
     let weight_min: f32 = -1.0;
     let weight_max: f32 = 1.0;
 
-    let players_amount: usize = 10;
+    let players_amount: usize = 5;
+    assert!(players_amount > 1, "players_amount={} should be > 1, else its useless", players_amount);
+
+    let mut nns_white_old: Vec<NeuralNetwork>;
+    let mut nns_black_old: Vec<NeuralNetwork>;
 
     let mut nns_white: Vec<NeuralNetwork> = (0..players_amount).map(|_i| create_nn_with_random_weights(&nn_heights.clone(), weight_min, weight_max)).collect();
     let mut nns_black: Vec<NeuralNetwork> = (0..players_amount).map(|_i| create_nn_with_random_weights(&nn_heights.clone(), weight_min, weight_max)).collect();
 
-    let generations: u32 = 1000;
+    let generations: u32 = 100;
 
 
-    for generation in 0..generations {
+    for generation in 0..=generations {
         println!("generation: {} / {}", generation, generations);
 
         let loops_amount: u32 = 1;
@@ -536,8 +547,11 @@ fn main () {
         // println!("nn_black_best = {}", nn_black_best);
 
         // assert_eq!(nns_white.len(), nns_black.len());
+        
+        nns_white_old = nns_white.clone();
+        nns_black_old = nns_black.clone();
 
-        for i in 0..nns_white.clone().len() {
+        for i in 0..players_amount {
             nns_white[i] = nn_white_best.clone();
             nns_black[i] = nn_black_best.clone();
         }
@@ -546,16 +560,46 @@ fn main () {
             // ( -(g as f32) / (gens as f32).sqrt() ).exp()
             // ( -(g as f32) / (gens as f32) ).exp()
             // ( -(g as f32) / (gens as f32).powf(0.8) ).exp()
-            ( - 3.0 * (g as f32) / (gens as f32) ).exp()
+            // ( - 3.0 * (g as f32) / (gens as f32) ).exp()
+            0.3 * ( -(g as f32) / (gens as f32) ).exp()
+            // 0.1 * ( -(g as f32) / (gens as f32) ).exp()
         }
-        let evolution_factor = generation_to_evolve_factor(generation, generations);
+        let evolution_factor: f32 = generation_to_evolve_factor(generation, generations);
 
-        println!("evolving with evolution_factor = {}", evolution_factor);
+        println!("evolving with evolution_factor = {}%", 100.0*evolution_factor);
 
-        for i in 1..nns_white.clone().len() {
+        for i in 1..players_amount {
             nns_white[i].evolve(evolution_factor);
             nns_black[i].evolve(evolution_factor);
         }
+
+        // if generation % 10 == 0 {
+        //     for i in 0..players_amount {
+        //         println!("nns_white[{}] = {}", i, nns_white[i]);
+        //         println!("nns_black[{}] = {}", i, nns_black[i]);
+        //     }
+        // }
+
+        assert_ne!(nns_white_old, nns_white);
+        assert_ne!(nns_black_old, nns_black);
+
+        // for i in 0..players_amount {
+        //     println!("nns_white[{}] = {}", i, nns_white[i]);
+        //     println!("nns_black[{}] = {}", i, nns_black[i]);
+        // }
+
+        // for i in 0..players_amount {
+        //     for j in 0..players_amount {
+        //         println!("i={}, j={}", i, j);
+        //         if i == j {
+        //             assert_eq!(nns_white[i], nns_white[j]);
+        //             assert_eq!(nns_black[i], nns_black[j]);
+        //             continue;
+        //         }
+        //         assert_ne!(nns_white[i], nns_white[j]);
+        //         assert_ne!(nns_black[i], nns_black[j]);
+        //     }
+        // }
 
         println!("\n");
 

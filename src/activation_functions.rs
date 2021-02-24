@@ -3,9 +3,10 @@
 
 
 pub fn activation_function (input: f32) -> f32 {
-    sigmoid_m05(input)
-    // sigmoid(input)
     // linear(input)
+    // sigmoid(input)
+    // sigmoid_m05(input)
+    sign_x_sqrt_abs_x(input)
 }
 
 
@@ -45,5 +46,10 @@ fn ReLU (x: f32) -> f32 {
     }
 }
 
+#[allow(dead_code)]
+#[allow(non_snake_case)]
+fn sign_x_sqrt_abs_x (x: f32) -> f32 {
+    x.signum() * x.abs().sqrt()
+}
 
 

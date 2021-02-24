@@ -38,12 +38,17 @@ pub fn random_f32 (min: f32, max: f32) -> f32 {
 
 
 
-pub fn random_in_m1_p1 () -> f32 {
-    // returns x in [-1.0 .. +1.0]
+pub fn random_f32_0_p1 () -> f32 {
+    // returns random value in [0.0 .. +1.0]
+    random_f32(0.0, 1.0)
+}
+
+pub fn random_f32_m1_p1 () -> f32 {
+    // returns random value in [-1.0 .. +1.0]
     random_f32(-1.0, 1.0)
 }
 
-pub fn random_m1_p1 () -> i32 {
+pub fn random_i32_m1_or_p1 () -> i32 {
     // returns -1 or +1
     random_i32(0, 1) * 2 - 1
 }
