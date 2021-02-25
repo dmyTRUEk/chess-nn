@@ -138,25 +138,52 @@ fn board_to_human_viewable_with_fen (board: Board, beautiful_output: bool) -> St
 
 
 
+// enum PiecesValue {
+//     Pawn = 1.0,
+//     Knight = 2.5,
+//     Bishop = 3.0,
+//     Rook = 5.0,
+//     Queen = 7.0,
+//     King = 10.0,
+// }
+
+struct PiecesValue {
+    pub pawn: f32,
+    pub knight: f32,
+    pub bishop: f32,
+    pub rook: f32,
+    pub queen: f32,
+    pub king: f32,
+}
+
+const PIECES_VALUE: PiecesValue = PiecesValue {
+    pawn: 1.0,
+    knight: 2.5,
+    bishop: 3.0,
+    rook: 5.0,
+    queen: 7.0,
+    king: 10.0,
+};
+
 fn analyze(board: Board, mut nn: NeuralNetwork) -> f32 {
     let mut array_board: Vec<f32> = vec![0.0; 64];
     let mut n: usize = 0;
     for (_i, c) in board_to_human_viewable(board, false).to_string().chars().enumerate() {
         // println!("i = {}, c = '{}'", i, c);
         let value: f32 = match c {
-            'p' => -1.0,
-            'n' => -2.0,
-            'b' => -3.0,
-            'r' => -5.0,
-            'q' => -6.0,
-            'k' => -7.0,
+            'p' => -PIECES_VALUE.pawn,
+            'n' => -PIECES_VALUE.knight,
+            'b' => -PIECES_VALUE.bishop,
+            'r' => -PIECES_VALUE.rook,
+            'q' => -PIECES_VALUE.queen,
+            'k' => -PIECES_VALUE.king,
 
-            'P' => 1.0,
-            'N' => 2.0,
-            'B' => 3.0,
-            'R' => 5.0,
-            'Q' => 6.0,
-            'K' => 7.0,
+            'P' => PIECES_VALUE.pawn,
+            'N' => PIECES_VALUE.knight,
+            'B' => PIECES_VALUE.bishop,
+            'R' => PIECES_VALUE.rook,
+            'Q' => PIECES_VALUE.queen,
+            'K' => PIECES_VALUE.king,
 
             '.' => 0.0,
             _ => {
@@ -310,19 +337,19 @@ fn play_game (nn_white: NeuralNetwork, nn_black: NeuralNetwork, show_log: bool) 
         let mut piece_sum_black: f32 = 0.0;
         for (_i, c) in board_to_human_viewable(game.current_position(), false).to_string().chars().enumerate() {
             match c {
-                'p' => piece_sum_black += 1.0,
-                'n' => piece_sum_black += 2.0,
-                'b' => piece_sum_black += 3.0,
-                'r' => piece_sum_black += 5.0,
-                'q' => piece_sum_black += 6.0,
-                'k' => piece_sum_black += 7.0,
+                'p' => piece_sum_black += PIECES_VALUE.pawn,
+                'n' => piece_sum_black += PIECES_VALUE.knight,
+                'b' => piece_sum_black += PIECES_VALUE.bishop,
+                'r' => piece_sum_black += PIECES_VALUE.rook,
+                'q' => piece_sum_black += PIECES_VALUE.queen,
+                // 'k' => piece_sum_black += PIECES_VALUE.king,
 
-                'P' => piece_sum_white += 1.0,
-                'N' => piece_sum_white += 2.0,
-                'B' => piece_sum_white += 3.0,
-                'R' => piece_sum_white += 5.0,
-                'Q' => piece_sum_white += 6.0,
-                'K' => piece_sum_white += 7.0,
+                'P' => piece_sum_white += PIECES_VALUE.pawn,
+                'N' => piece_sum_white += PIECES_VALUE.knight,
+                'B' => piece_sum_white += PIECES_VALUE.bishop,
+                'R' => piece_sum_white += PIECES_VALUE.rook,
+                'Q' => piece_sum_white += PIECES_VALUE.queen,
+                // 'K' => piece_sum_white += PIECES_VALUE.king,
 
                 _ => {
                     continue;
