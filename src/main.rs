@@ -224,11 +224,13 @@ fn actions_to_string (actions: Vec<Action>) -> String {
 
 
 
+const MOVES_LIMIT: u32 = 150;
+
 fn play_game (nn_white: NeuralNetwork, nn_black: NeuralNetwork, show_log: bool) -> (EnumWhoWon, String) {
     assert_eq!(nn_white.neurons[0].len(), 64);
     assert_eq!(nn_black.neurons[0].len(), 64);
 
-    let mut move_n: u64 = 0;
+    let mut move_n: u32 = 0;
 
     // let mut board_now = Board::default();
     // let mut game = Game::new_with_board(Board::from_fen(FEN_INIT_POSITION.to_string()).unwrap());
@@ -239,7 +241,7 @@ fn play_game (nn_white: NeuralNetwork, nn_black: NeuralNetwork, show_log: bool) 
         println!("{}", game.current_position());
     }
 
-    while game.result() == None && move_n < 300 {
+    while game.result() == None && move_n < MOVES_LIMIT {
         move_n += 1;
 
         let moves = MoveGen::new_legal(&game.current_position());
@@ -299,9 +301,9 @@ fn play_game (nn_white: NeuralNetwork, nn_black: NeuralNetwork, show_log: bool) 
 
     }
 
-    if move_n >= 150 {
+    if move_n >= MOVES_LIMIT {
         if show_log {
-            println!("game result: 150+ moves");
+            println!("game result: {}+ moves", MOVES_LIMIT);
             println!("so winner will be calculated by pieces");
         }
         let mut piece_sum_white: f32 = 0.0;
@@ -405,17 +407,18 @@ fn play_tournament (nns_white: Vec<NeuralNetwork>, nns_black: Vec<NeuralNetwork>
             std::io::stdout().flush().unwrap();
         }
         for player_white in &mut players_white {
+            println!();
             for player_black in &mut players_black {
+                if show_log {
+                    game_n += 1;
+                    print!("  {}/{}: ", game_n, game_n_max);
+                }
+
                 let game_res = play_game(
                     player_white.nn.clone(),
                     player_black.nn.clone(),
                     false
                 );
-
-                if show_log {
-                    game_n += 1;
-                    print!("  {}/{}: ", game_n, game_n_max);
-                }
 
                 // let delta_rating_white = logistic(player_black.rating - player_white.rating);
                 // let delta_rating_black = logistic(player_white.rating - player_black.rating);
@@ -537,7 +540,7 @@ fn main () {
     let weight_min: f32 = -1.0;
     let weight_max: f32 = 1.0;
 
-    let players_amount: usize = 10;
+    let players_amount: usize = 5;
     assert!(players_amount > 1, "players_amount={} should be > 1, else its useless", players_amount);
 
     let mut nns_white_old: Vec<NeuralNetwork>;
@@ -572,13 +575,14 @@ fn main () {
             nns_black[i] = nn_black_best.clone();
         }
 
-        fn generation_to_evolve_factor (g: u32, gens: u32) -> f32 {
-            // ( -(g as f32) / (gens as f32).sqrt() ).exp()
-            // ( -(g as f32) / (gens as f32).powf(0.8) ).exp()
-            // ( -(g as f32) / (gens as f32) ).exp()
-            ( - 3.0 * (g as f32) / (gens as f32) ).exp()
-            // 0.3 * ( -(g as f32) / (gens as f32) ).exp()
-            // 0.1 * ( -(g as f32) / (gens as f32) ).exp()
+        fn generation_to_evolve_factor (gen: u32, gens: u32) -> f32 {
+            // ( -(gen as f32) / (gens as f32).sqrt() ).exp()
+            // ( -(gen as f32) / (gens as f32).powf(0.8) ).exp()
+            // ( -(gen as f32) / (gens as f32) ).exp()
+            // ( - 3.0 * (gen as f32) / (gens as f32) ).exp()
+            0.3 * ( - 3.0 * (gen as f32) / (gens as f32) ).exp()
+            // 0.3 * ( -(gen as f32) / (gens as f32) ).exp()
+            // 0.1 * ( -(gen as f32) / (gens as f32) ).exp()
         }
         let evolution_factor: f32 = generation_to_evolve_factor(generation, generations);
 
@@ -598,6 +602,13 @@ fn main () {
 
         assert_ne!(nns_white_old, nns_white);
         assert_ne!(nns_black_old, nns_black);
+
+        if nns_white_old[0] == nns_white[0] {
+            println!("white new best is same");
+        }
+        if nns_black_old[0] == nns_black[0] {
+            println!("black new best is same");
+        }
 
         // for i in 0..players_amount {
         //     println!("nns_white[{}] = {}", i, nns_white[i]);
