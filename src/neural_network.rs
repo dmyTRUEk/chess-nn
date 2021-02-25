@@ -26,6 +26,17 @@ pub fn create_nn (heights: &Vec<usize>) -> NeuralNetwork {
     nn
 }
 
+pub fn create_nn_with_const_weights (heights: &Vec<usize>, value: f32) -> NeuralNetwork {
+    let mut nn = create_nn(heights);
+    let layers = heights.len();
+    for l in 1..layers {
+        for h in 0..nn.neurons[l].len() {
+            nn.neurons[l][h].init_weights_by_value(value);
+        }
+    }
+    nn
+}
+
 pub fn create_nn_with_random_weights (heights: &Vec<usize>, weight_min: f32, weight_max: f32) -> NeuralNetwork {
     let mut nn = create_nn(heights);
     nn.init_weights_by_random(weight_min, weight_max);

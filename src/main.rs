@@ -8,6 +8,7 @@ use std::io::Write;
 use chess::*;
 
 use crate::neural_network::*;
+use crate::random::*;
 
 
 
@@ -299,20 +300,6 @@ fn play_game (nn_white: NeuralNetwork, nn_black: NeuralNetwork, show_log: bool, 
                     omwm_best = Some(mwm_possible);
                 },
                 Some(ref mwm_best) => {
-
-                    // match side_to_move {
-                    //     Color::White => {
-                    //         if mwm_possible.mark > mwm_best.mark {
-                    //             omwm_best = Some(mwm_possible);
-                    //         }
-                    //     },
-                    //     Color::Black => {
-                    //         if mwm_possible.mark < mwm_best.mark {
-                    //             omwm_best = Some(mwm_possible);
-                    //         }
-                    //     }
-                    // }
-
                     if (mwm_possible.mark - mwm_best.mark) * match side_to_move {Color::White=>{1.0}, Color::Black=>{-1.0}} > 0.0 {
                         omwm_best = Some(mwm_possible);
                     }
@@ -342,7 +329,9 @@ fn play_game (nn_white: NeuralNetwork, nn_black: NeuralNetwork, show_log: bool, 
         }
 
         if game.can_declare_draw() {
-            game.declare_draw();
+            // game.declare_draw();
+            move_n = MOVES_LIMIT;
+            break;
         }
 
         if show_log {
@@ -458,7 +447,7 @@ fn play_tournament (nns: Vec<NeuralNetwork>, loops_amount: u32, show_log: bool) 
     let mut players: Vec<Player> = nns.into_iter().map(|nn| Player{nn: nn, rating: default_rating}).collect();
     let players_amount: usize = players.len();
 
-    let game_n_max = players_amount * (players_amount - 1) / 2;
+    let game_n_max = 2 * players_amount * (players_amount - 1) / 2;
     let mut game_n = 0;
 
     for loop_n in 1..=loops_amount {
@@ -468,7 +457,7 @@ fn play_tournament (nns: Vec<NeuralNetwork>, loops_amount: u32, show_log: bool) 
         }
         for i in 0..players_amount {
             // println!();
-            for j in i+1..players_amount {
+            for j in 0..players_amount {
                 if i == j { continue; }
                 if show_log {
                     game_n += 1;
@@ -478,7 +467,7 @@ fn play_tournament (nns: Vec<NeuralNetwork>, loops_amount: u32, show_log: bool) 
                 let mut player_i: Player = players[i].clone();
                 let mut player_j: Player = players[j].clone();
 
-                let game_res = play_game( player_i.nn.clone(), player_j.nn.clone(), false, false);
+                let game_res = play_game(player_i.nn.clone(), player_j.nn.clone(), false, false);
 
                 let delta_rating_1 = logistic(player_j.rating - player_i.rating);
                 let delta_rating_2 = logistic(player_i.rating - player_j.rating);
@@ -527,8 +516,8 @@ fn play_tournament (nns: Vec<NeuralNetwork>, loops_amount: u32, show_log: bool) 
                 //     println!();
                 // }
 
-                players[i] = player_i;
-                players[j] = player_j;
+                players[i].rating = player_i.rating;
+                players[j].rating = player_j.rating;
             }
         }
 
@@ -555,16 +544,16 @@ fn play_tournament (nns: Vec<NeuralNetwork>, loops_amount: u32, show_log: bool) 
     }
 
     // player_best.nn
-    players_sorted.into_iter().map(|player| player.nn).collect()
+    players_sorted.into_iter().map(|p| p.nn).collect()
 }
 
 
 
 fn main () {
     // let nn_heights: Vec<usize> = vec![64, 100, 100, 100, 1];
-    let nn_heights: Vec<usize> = vec![64, 60, 40, 20, 1];
+    // let nn_heights: Vec<usize> = vec![64, 60, 40, 20, 1];
     // let nn_heights: Vec<usize> = vec![64, 20, 20, 20, 1];
-    // let nn_heights: Vec<usize> = vec![64, 100, 100, 1];
+    let nn_heights: Vec<usize> = vec![64, 100, 100, 1];
     // let nn_heights: Vec<usize> = vec![64, 100, 1];
     // let nn_heights: Vec<usize> = vec![64, 10, 1];
     // let nn_heights: Vec<usize> = vec![64, 1];
@@ -579,9 +568,9 @@ fn main () {
     let players_amount: usize = 20;
     assert!(players_amount > 1, "players_amount={} should be > 1, else its useless", players_amount);
 
-    let mut nns_old: Vec<NeuralNetwork>;
-
+    // let mut nns: Vec<NeuralNetwork> = (0..players_amount).map(|_i| create_nn_with_const_weights(&nn_heights, 1.0)).collect();
     let mut nns: Vec<NeuralNetwork> = (0..players_amount).map(|_i| create_nn_with_random_weights(&nn_heights, weight_min, weight_max)).collect();
+    let mut nns_old: Vec<NeuralNetwork>;
 
     let generations: u32 = 1000;
 
@@ -598,25 +587,26 @@ fn main () {
             true
         );
 
-        // println!("nn_best = {}", nn_best);
+        // println!("nn_best = {}", nns[0]);
 
-        fn generation_to_evolve_factor (gen: u32, gens: u32) -> f32 {
-            // ( -(gen as f32) / (gens as f32).sqrt() ).exp()
-            // ( -(gen as f32) / (gens as f32).powf(0.8) ).exp()
-            // ( -(gen as f32) / (gens as f32) ).exp()
-            // ( - 3.0 * (gen as f32) / (gens as f32) ).exp()
-            0.3 * ( - 3.0 * (gen as f32) / (gens as f32) ).exp()
-            // 0.3 * ( -(gen as f32) / (gens as f32) ).exp()
-            // 0.1 * ( -(gen as f32) / (gens as f32) ).exp()
-        }
-        let evolution_factor: f32 = generation_to_evolve_factor(generation, generations);
+        if generation < generations {
+            fn generation_to_evolve_factor (gen: u32, gens: u32) -> f32 {
+                // ( -(gen as f32) / (gens as f32).sqrt() ).exp()
+                // ( -(gen as f32) / (gens as f32).powf(0.8) ).exp()
+                // ( -(gen as f32) / (gens as f32) ).exp()
+                // ( - 3.0 * (gen as f32) / (gens as f32) ).exp()
+                0.3 * ( - 3.0 * (gen as f32) / (gens as f32) ).exp()
+                // 0.3 * ( -(gen as f32) / (gens as f32) ).exp()
+                // 0.1 * ( -(gen as f32) / (gens as f32) ).exp()
+            }
+            let evolution_factor: f32 = generation_to_evolve_factor(generation, generations);
+            println!("evolving with evolution_factor = {}%", 100.0*evolution_factor);
 
-        println!("evolving with evolution_factor = {}%", 100.0*evolution_factor);
-
-        // first half is best nns so dont evolve them, but second half will be evolved
-        for i in players_amount/2..players_amount {
-            nns[i] = nns[0].clone();
-            nns[i].evolve(evolution_factor);
+            // first part is best nns so dont evolve them, but second part will be evolved
+            for i in (players_amount/3).max(1)..players_amount {
+                nns[i] = nns[0].clone();
+                nns[i].evolve(evolution_factor);
+            }
         }
 
         // if generation % 10 == 0 {
@@ -625,9 +615,9 @@ fn main () {
         //     }
         // }
 
-        assert_ne!(nns_old, nns);
+        // assert_ne!(nns_old, nns);
 
-        if nns_old[0] == nns[0] {
+        if nns_old[0] == nns[0] && generation > 0 {
             println!("CAUTION: NEW BEST IS SAME!!!");
         }
 

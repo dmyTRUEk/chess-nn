@@ -45,7 +45,7 @@ impl Neuron {
 
         let total_weights: u32 = self.weights.len() as u32;
         let weights_to_evolve: u32 = ((total_weights as f32) * evolution_factor) as u32;
-        let weights_to_evolve: u32 = random_u32(1, weights_to_evolve);
+        let weights_to_evolve: u32 = random_u32(1, weights_to_evolve.max(1));
         // println!("total_weights = {}", total_weights);
         // println!("weights_to_evolve = {}", weights_to_evolve);
 
