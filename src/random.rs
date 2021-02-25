@@ -25,14 +25,17 @@ pub fn fast_random_f32 (min: f32, max: f32) -> f32 {
 
 
 pub fn random_u32 (min: u32, max: u32) -> u32 {
+    // assert!(min <= max, "sould be min <= max, but min={}, max={}", min, max);
     (_good_random_u32()) % (max-min+1) + min
 }
 
 pub fn random_i32 (min: i32, max: i32) -> i32 {
+    // assert!(min <= max, "sould be min <= max, but min={}, max={}", min, max);
     (_good_random_u32() as i32) % (max-min+1) + min
 }
 
 pub fn random_f32 (min: f32, max: f32) -> f32 {
+    // assert!(min <= max, "sould be min <= max, but min={}, max={}", min, max);
     (_good_random_f32()) * (max-min) + min
 }
 

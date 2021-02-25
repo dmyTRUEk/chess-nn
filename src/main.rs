@@ -364,16 +364,6 @@ fn play_game (nn_white: NeuralNetwork, nn_black: NeuralNetwork, show_log: bool) 
 
 
 
-#[derive(Debug, Clone)]
-struct Player {
-    pub nn: NeuralNetwork,
-    pub rating: f32,
-}
-
-fn logistic (x: f32) -> f32 {
-    100.0 / ( 1.0 + 10.0_f32.powf(x/400.0) )
-}
-
 // fn min (a: f32, b: f32) -> f32 {
 //     if a < b { a } else { b }
 // }
@@ -390,6 +380,16 @@ fn logistic (x: f32) -> f32 {
 //     res_v.sort_by(|a, b| b.partial_cmp(a).unwrap());
 //     res_v
 // }
+
+#[derive(Debug, Clone)]
+struct Player {
+    pub nn: NeuralNetwork,
+    pub rating: f32,
+}
+
+fn logistic (x: f32) -> f32 {
+    100.0 / ( 1.0 + 10.0_f32.powf(x/400.0) )
+}
 
 fn play_tournament (nns_white: Vec<NeuralNetwork>, nns_black: Vec<NeuralNetwork>, loops_amount: u32, show_log: bool) -> (NeuralNetwork, NeuralNetwork) {
     let default_rating: f32 = 1000.0;
@@ -412,51 +412,70 @@ fn play_tournament (nns_white: Vec<NeuralNetwork>, nns_black: Vec<NeuralNetwork>
                     false
                 );
 
+                if show_log {
+                    game_n += 1;
+                    print!("  {}/{}: ", game_n, game_n_max);
+                }
+
                 // let delta_rating_white = logistic(player_black.rating - player_white.rating);
                 // let delta_rating_black = logistic(player_white.rating - player_black.rating);
                 let delta_rating_1 = logistic(player_black.rating - player_white.rating);
                 let delta_rating_2 = logistic(player_white.rating - player_black.rating);
                 // let delta_rating_bigger = max(delta_rating_1, delta_rating_2);
                 // let delta_rating_less   = min(delta_rating_1, delta_rating_2);
-
-                if show_log {
-                    game_n += 1;
-                    print!("  {}/{}: ", game_n, game_n_max);
-                }
+                
                 match game_res.0 {
                     EnumWhoWon::White => {
                         if show_log {
                             print!("White won! ");
                             std::io::stdout().flush().unwrap();
+                            // println!("White won! ");
+                            // println!("old ratings: white={}, black={}", player_white.rating, player_black.rating);
                         }
                         player_white.rating += delta_rating_2;
                         player_black.rating -= delta_rating_2;
+                        if show_log {
+                            // println!("new ratings: white={}, black={}", player_white.rating, player_black.rating);
+                        }
                     },
                     EnumWhoWon::Black => {
                         if show_log {
                             print!("Black won! ");
                             std::io::stdout().flush().unwrap();
+                            // println!("Black won! ");
+                            // println!("old ratings: white={}, black={}", player_white.rating, player_black.rating);
                         }
                         player_white.rating -= delta_rating_1;
                         player_black.rating += delta_rating_1;
+                        if show_log {
+                            // println!("new ratings: white={}, black={}", player_white.rating, player_black.rating);
+                        }
                     },
                     EnumWhoWon::Draw => {
                         if show_log {
                             print!("Draw! ");
                             std::io::stdout().flush().unwrap();
+                            // println!("Draw! ");
+                            // println!("old ratings: white={}, black={}", player_white.rating, player_black.rating);
                         }
                         if player_white.rating > player_black.rating {
-                            player_white.rating -= delta_rating_2 / 2.0;
-                            player_black.rating += delta_rating_2 / 2.0;
+                            player_white.rating -= delta_rating_2 / 10.0;
+                            player_black.rating += delta_rating_2 / 10.0;
                         }
                         else if player_black.rating > player_white.rating {
-                            player_white.rating -= delta_rating_2 / 2.0;
-                            player_black.rating += delta_rating_2 / 2.0;
+                            player_white.rating += delta_rating_2 / 10.0;
+                            player_black.rating -= delta_rating_2 / 10.0;
                         }
                         else {  // equal
                             // nothing
                         }
+                        if show_log {
+                            // println!("new ratings: white={}, black={}", player_white.rating, player_black.rating);
+                        }
                     }
+                }
+                if show_log {
+                    // println!();
                 }
             }
         }
@@ -476,6 +495,8 @@ fn play_tournament (nns_white: Vec<NeuralNetwork>, nns_black: Vec<NeuralNetwork>
         players_black_sorted.sort_by(|p1, p2| p2.rating.partial_cmp(&p1.rating).unwrap());
         (players_white_sorted, players_black_sorted)
     };
+    let player_white_best: Player = players_white_sorted[0].clone();
+    let player_black_best: Player = players_black_sorted[0].clone();
 
     if show_log {
         // let ratings_white: Vec<f32> = players_white.clone().into_iter().map(|p| p.rating).collect();
@@ -490,12 +511,7 @@ fn play_tournament (nns_white: Vec<NeuralNetwork>, nns_black: Vec<NeuralNetwork>
             ratings_white_sorted,
             ratings_black_sorted
         );
-    }
 
-    let player_white_best: Player = players_white_sorted[0].clone();
-    let player_black_best: Player = players_black_sorted[0].clone();
-
-    if show_log {
         let (_who_won, game_moves): (EnumWhoWon, String) = play_game(player_white_best.nn.clone(), player_black_best.nn.clone(), false);
         println!("game_moves of best NNs: '{}'", game_moves);
     }
@@ -521,7 +537,7 @@ fn main () {
     let weight_min: f32 = -1.0;
     let weight_max: f32 = 1.0;
 
-    let players_amount: usize = 5;
+    let players_amount: usize = 10;
     assert!(players_amount > 1, "players_amount={} should be > 1, else its useless", players_amount);
 
     let mut nns_white_old: Vec<NeuralNetwork>;
@@ -530,7 +546,7 @@ fn main () {
     let mut nns_white: Vec<NeuralNetwork> = (0..players_amount).map(|_i| create_nn_with_random_weights(&nn_heights.clone(), weight_min, weight_max)).collect();
     let mut nns_black: Vec<NeuralNetwork> = (0..players_amount).map(|_i| create_nn_with_random_weights(&nn_heights.clone(), weight_min, weight_max)).collect();
 
-    let generations: u32 = 100;
+    let generations: u32 = 1000;
 
 
     for generation in 0..=generations {
@@ -558,10 +574,10 @@ fn main () {
 
         fn generation_to_evolve_factor (g: u32, gens: u32) -> f32 {
             // ( -(g as f32) / (gens as f32).sqrt() ).exp()
-            // ( -(g as f32) / (gens as f32) ).exp()
             // ( -(g as f32) / (gens as f32).powf(0.8) ).exp()
-            // ( - 3.0 * (g as f32) / (gens as f32) ).exp()
-            0.3 * ( -(g as f32) / (gens as f32) ).exp()
+            // ( -(g as f32) / (gens as f32) ).exp()
+            ( - 3.0 * (g as f32) / (gens as f32) ).exp()
+            // 0.3 * ( -(g as f32) / (gens as f32) ).exp()
             // 0.1 * ( -(g as f32) / (gens as f32) ).exp()
         }
         let evolution_factor: f32 = generation_to_evolve_factor(generation, generations);

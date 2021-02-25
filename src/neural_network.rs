@@ -124,16 +124,30 @@ impl NeuralNetwork {
     pub fn evolve (&mut self, evolution_factor: f32) {
         assert!(0.0 <= evolution_factor && evolution_factor <= 1.0);
 
-        // let layers = self.neurons.len();
-
         let total_neurons: u32 = self.get_total_neurons();
         let neurons_to_evolve: u32 = ((total_neurons as f32) * evolution_factor) as u32;
+        let neurons_to_evolve: u32 = random_u32(1, neurons_to_evolve);
         // println!("total_neurons = {}", total_neurons);
         // println!("neurons_to_evolve = {}", neurons_to_evolve);
 
         for _i in 0..neurons_to_evolve {
-            let l: usize = random_u32(1, self.neurons.len() as u32 - 1) as usize;
-            let h: usize = random_u32(0, self.neurons[l].len() as u32 - 1) as usize;
+            // let l: usize = random_u32(1, self.neurons.len() as u32 - 1) as usize;
+            // let h: usize = random_u32(0, self.neurons[l].len() as u32 - 1) as usize;
+            let (l, h): (usize, usize) = {
+                let neuron_id_to_evolve: usize = random_u32(0, total_neurons-1) as usize;
+                let mut l: usize = 1;
+                let mut h: usize = 0;
+                for _j in 0..neuron_id_to_evolve {
+                    if h < self.neurons[l].len()-1 {
+                        h += 1;
+                    }
+                    else {
+                        l += 1;
+                        h = 0;
+                    }
+                }
+                (l, h)
+            };
             self.neurons[l][h].evolve(evolution_factor);
         }
     }
