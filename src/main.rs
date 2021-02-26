@@ -4,11 +4,12 @@ pub mod activation_functions;
 pub mod random;
 
 use std::io::Write;
+use std::collections::HashMap;
 
 use chess::*;
 
 use crate::neural_network::*;
-use crate::random::*;
+// use crate::random::*;
 
 
 
@@ -208,11 +209,17 @@ fn wait_for_enter () {
 
 
 
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
 enum EnumWhoWon {
     White,
     Black,
     Draw,
 }
+// impl PartialEq for EnumWhoWon {
+//     fn eq (&self, other: &Self) -> bool {
+        
+//     }
+// }
 
 struct MoveWithMark {
     pub chess_move: ChessMove,
@@ -432,11 +439,18 @@ fn play_game (nn_white: NeuralNetwork, nn_black: NeuralNetwork, show_log: bool, 
 //     res_v
 // }
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug)]
 struct Player {
     pub nn: NeuralNetwork,
     pub rating: f32,
 }
+
+// impl PartialEq for Player {
+//     fn eq (&self, other: &Self) -> bool {
+//         return false;
+//     }
+// }
+// impl Eq for Player {}
 
 fn logistic (x: f32) -> f32 {
     100.0 / ( 1.0 + 10.0_f32.powf(x/400.0) )
@@ -449,6 +463,7 @@ fn play_tournament (nns: Vec<NeuralNetwork>, loops_amount: u32, show_log: bool) 
 
     let game_n_max = 2 * players_amount * (players_amount - 1) / 2;
     let mut game_n = 0;
+    let mut tournament_statistics: HashMap<EnumWhoWon, u32> = HashMap::new();
 
     for loop_n in 1..=loops_amount {
         if show_log && loops_amount > 1 {
@@ -461,13 +476,14 @@ fn play_tournament (nns: Vec<NeuralNetwork>, loops_amount: u32, show_log: bool) 
                 if i == j { continue; }
                 if show_log {
                     game_n += 1;
-                    print!("  {}/{}: ", game_n, game_n_max);
+                    // print!("  {}/{}: ", game_n, game_n_max);
                 }
 
                 let mut player_i: Player = players[i].clone();
                 let mut player_j: Player = players[j].clone();
 
                 let game_res = play_game(player_i.nn.clone(), player_j.nn.clone(), false, false);
+                let game_res_who_won: EnumWhoWon = game_res.0;
 
                 let delta_rating_1 = logistic(player_j.rating - player_i.rating);
                 let delta_rating_2 = logistic(player_i.rating - player_j.rating);
@@ -476,10 +492,24 @@ fn play_tournament (nns: Vec<NeuralNetwork>, loops_amount: u32, show_log: bool) 
                 //     println!("old ratings: i={}, j={}", player_i.rating, player_j.rating);
                 // }
                 
-                match game_res.0 {
+                let counter = tournament_statistics.entry(game_res_who_won.clone()).or_insert(0);
+                *counter += 1;
+
+                // match tournament_statistics.get(&game_res_who_won) {
+                //     None => {
+                //         // tournament_statistics[&game_res_who_won] = 0;
+                //         tournament_statistics.insert(game_res_who_won.clone(), 0);
+                //     },
+                //     Some(val) => {
+                //         val += 1;
+                //     }
+                // }
+                
+                match game_res_who_won {
                     EnumWhoWon::White => {
                         if show_log {
-                            print!("White won! ");
+                            // print!("White won! ");
+                            print!("W");
                             std::io::stdout().flush().unwrap();
                         }
                         player_i.rating += delta_rating_2;
@@ -487,7 +517,8 @@ fn play_tournament (nns: Vec<NeuralNetwork>, loops_amount: u32, show_log: bool) 
                     },
                     EnumWhoWon::Black => {
                         if show_log {
-                            print!("Black won! ");
+                            // print!("Black won! ");
+                            print!("B");
                             std::io::stdout().flush().unwrap();
                         }
                         player_i.rating -= delta_rating_1;
@@ -495,7 +526,8 @@ fn play_tournament (nns: Vec<NeuralNetwork>, loops_amount: u32, show_log: bool) 
                     },
                     EnumWhoWon::Draw => {
                         if show_log {
-                            print!("Draw! ");
+                            // print!("Draw! ");
+                            print!("D");
                             std::io::stdout().flush().unwrap();
                         }
                         if player_i.rating > player_j.rating {
@@ -535,12 +567,14 @@ fn play_tournament (nns: Vec<NeuralNetwork>, loops_amount: u32, show_log: bool) 
     };
 
     if show_log {
+        println!("\n\nstats: {:?}", tournament_statistics);
+
         let ratings_sorted: Vec<f32> = players_sorted.clone().iter().map(|p| p.rating).collect();
-        println!("\nfinal ratings (sorted): \nplayers: {:?}", ratings_sorted);
+        println!("\nfinal ratings (sorted): {:?}", ratings_sorted);
 
         let player_best: Player = players_sorted[0].clone();
-        let (_who_won, game_moves) = play_game(player_best.nn.clone(), player_best.nn.clone(), false, true);
-        println!("\ngame_moves of best NNs: '{}'\n", game_moves.unwrap());
+        let (who_won, game_moves) = play_game(player_best.nn.clone(), player_best.nn.clone(), false, true);
+        println!("\ngame_moves of best NNs: '{}', winner={:?}\n", game_moves.unwrap(), who_won);
     }
 
     // player_best.nn
@@ -551,9 +585,10 @@ fn play_tournament (nns: Vec<NeuralNetwork>, loops_amount: u32, show_log: bool) 
 
 fn main () {
     // let nn_heights: Vec<usize> = vec![64, 100, 100, 100, 1];
-    // let nn_heights: Vec<usize> = vec![64, 60, 40, 20, 1];
+    let nn_heights: Vec<usize> = vec![64, 60, 40, 20, 1];
     // let nn_heights: Vec<usize> = vec![64, 20, 20, 20, 1];
-    let nn_heights: Vec<usize> = vec![64, 100, 100, 1];
+    // let nn_heights: Vec<usize> = vec![64, 100, 100, 1];
+    // let nn_heights: Vec<usize> = vec![64, 1000, 1];
     // let nn_heights: Vec<usize> = vec![64, 100, 1];
     // let nn_heights: Vec<usize> = vec![64, 10, 1];
     // let nn_heights: Vec<usize> = vec![64, 1];
@@ -571,6 +606,7 @@ fn main () {
     // let mut nns: Vec<NeuralNetwork> = (0..players_amount).map(|_i| create_nn_with_const_weights(&nn_heights, 1.0)).collect();
     let mut nns: Vec<NeuralNetwork> = (0..players_amount).map(|_i| create_nn_with_random_weights(&nn_heights, weight_min, weight_max)).collect();
     let mut nns_old: Vec<NeuralNetwork>;
+    let mut new_best_same_counter: u32 = 0;
 
     let generations: u32 = 1000;
 
@@ -595,9 +631,10 @@ fn main () {
                 // ( -(gen as f32) / (gens as f32).powf(0.8) ).exp()
                 // ( -(gen as f32) / (gens as f32) ).exp()
                 // ( - 3.0 * (gen as f32) / (gens as f32) ).exp()
-                0.3 * ( - 3.0 * (gen as f32) / (gens as f32) ).exp()
                 // 0.3 * ( -(gen as f32) / (gens as f32) ).exp()
+                // 0.3 * ( - 3.0 * (gen as f32) / (gens as f32) ).exp()
                 // 0.1 * ( -(gen as f32) / (gens as f32) ).exp()
+                0.1 * ( - 3.0 * (gen as f32) / (gens as f32) ).exp()
             }
             let evolution_factor: f32 = generation_to_evolve_factor(generation, generations);
             println!("evolving with evolution_factor = {}%", 100.0*evolution_factor);
@@ -618,7 +655,11 @@ fn main () {
         // assert_ne!(nns_old, nns);
 
         if nns_old[0] == nns[0] && generation > 0 {
-            println!("CAUTION: NEW BEST IS SAME!!!");
+            new_best_same_counter += 1;
+            println!("CAUTION: NEW BEST IS SAME {} TIMES!!!", new_best_same_counter);
+        }
+        else {
+            new_best_same_counter = 0;
         }
 
         // for i in 0..players_amount {
@@ -645,6 +686,8 @@ fn main () {
     for i in 0..players_amount {
         println!("nns[{}] = {}\n\n", i, nns[i]);
     }
+
+    println!("best_nn = {}\n\n", nns[0]);
 
 }
 
