@@ -52,14 +52,16 @@ impl Neuron {
         for _i in 0..weights_to_evolve {
             let h: usize = random_u32(0, total_weights-1) as usize;
 
-            let sign: f32 = if random_f32_0_p1() < 0.1 { -1.0 } else { 1.0 };
+            let sign: f32 = if random_f32_0_p1() < 0.3 { -1.0 } else { 1.0 };
 
             // println!("old value: {}", self.weights[h]);
             self.weights[h] *= sign *
                 if random_f32_m1_p1() > 0.0 {
-                    1.0 * (1.0 + evolution_factor)
+                    // 1.0 * (1.0 + evolution_factor)
+                    1.0 * (1.1)
                 } else {
-                    1.0 / (1.0 + evolution_factor)
+                    // 1.0 / (1.0 + evolution_factor)
+                    1.0 / (1.1)
                 };
             // println!("new value: {}", self.weights[h]);
         }

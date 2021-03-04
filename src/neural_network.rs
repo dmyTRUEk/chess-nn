@@ -137,7 +137,7 @@ impl NeuralNetwork {
 
         let total_neurons: u32 = self.get_total_neurons();
         let neurons_to_evolve: u32 = ((total_neurons as f32) * evolution_factor) as u32;
-        let neurons_to_evolve: u32 = random_u32(1, neurons_to_evolve);
+        let neurons_to_evolve: u32 = random_u32(1, neurons_to_evolve.max(1));
         // println!("total_neurons = {}", total_neurons);
         // println!("neurons_to_evolve = {}", neurons_to_evolve);
 
