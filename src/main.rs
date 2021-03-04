@@ -262,7 +262,7 @@ fn actions_to_string (actions: Vec<Action>) -> String {
 
 
 
-const MOVES_LIMIT: u32 = 150;
+const MOVES_LIMIT: u32 = 300;
 
 fn play_game (nn_white: NeuralNetwork, nn_black: NeuralNetwork, show_log: bool, get_game: bool) -> (EnumWhoWon, Option<String>) {
     assert_eq!(nn_white.neurons[0].len(), 64);
@@ -285,13 +285,14 @@ fn play_game (nn_white: NeuralNetwork, nn_black: NeuralNetwork, show_log: bool, 
         let moves = MoveGen::new_legal(&game.current_position());
         let mut omwm_best: Option<MoveWithMark> = None;
 
+        let side_to_move: Color = game.current_position().side_to_move();
+
         for move_possible in moves {
             let board_possible: Board = make_move(game.current_position(), move_possible);
             
             // println!("{}", board_to_string_with_fen(board_possible, false));
             
             // let side_to_move: Color = board_possible.side_to_move();
-            let side_to_move: Color = game.current_position().side_to_move();
 
             let mark_possible: f32 = match side_to_move {
                 Color::White => {
@@ -489,8 +490,8 @@ fn play_tournament (nns: Vec<NeuralNetwork>, loops_amount: u32, show_log: bool) 
                 let game_res = play_game(player_i.nn.clone(), player_j.nn.clone(), false, false);
                 let game_res_who_won: EnumWhoWon = game_res.0;
 
-                // let delta_rating_1 = logistic(player_j.rating - player_i.rating);
-                // let delta_rating_2 = logistic(player_i.rating - player_j.rating);
+                let delta_rating_1 = logistic(player_j.rating - player_i.rating);
+                let delta_rating_2 = logistic(player_i.rating - player_j.rating);
 
                 // if show_log {
                 //     println!("old ratings: i={}, j={}", player_i.rating, player_j.rating);
@@ -516,9 +517,9 @@ fn play_tournament (nns: Vec<NeuralNetwork>, loops_amount: u32, show_log: bool) 
                             print!("W");
                             std::io::stdout().flush().unwrap();
                         }
-                        // player_i.rating += delta_rating_2;
-                        // player_j.rating -= delta_rating_2;
-                        player_i.rating += 100.0;
+                        player_i.rating += delta_rating_2;
+                        player_j.rating -= delta_rating_2;
+                        // player_i.rating += 100.0;
                         // player_j.rating -= 10.0;
                     },
                     EnumWhoWon::Black => {
@@ -527,10 +528,10 @@ fn play_tournament (nns: Vec<NeuralNetwork>, loops_amount: u32, show_log: bool) 
                             print!("B");
                             std::io::stdout().flush().unwrap();
                         }
-                        // player_i.rating -= delta_rating_1;
-                        // player_j.rating += delta_rating_1;
+                        player_i.rating -= delta_rating_1;
+                        player_j.rating += delta_rating_1;
                         // player_i.rating -= 10.0;
-                        player_j.rating += 100.0;
+                        // player_j.rating += 100.0;
                     },
                     EnumWhoWon::Draw => {
                         if show_log {
@@ -539,14 +540,14 @@ fn play_tournament (nns: Vec<NeuralNetwork>, loops_amount: u32, show_log: bool) 
                             std::io::stdout().flush().unwrap();
                         }
                         if player_i.rating > player_j.rating {
-                            // player_i.rating -= delta_rating_2 / 10.0;
-                            // player_j.rating += delta_rating_2 / 10.0;
+                            player_i.rating -= delta_rating_2 / 10.0;
+                            player_j.rating += delta_rating_2 / 10.0;
                             // player_i.rating -= 1.0;
                             // player_j.rating += 1.0;
                         }
                         else if player_j.rating > player_i.rating {
-                            // player_i.rating += delta_rating_2 / 10.0;
-                            // player_j.rating -= delta_rating_2 / 10.0;
+                            player_i.rating += delta_rating_2 / 10.0;
+                            player_j.rating -= delta_rating_2 / 10.0;
                             // player_i.rating += 1.0;
                             // player_j.rating -= 1.0;
                         }
@@ -560,9 +561,9 @@ fn play_tournament (nns: Vec<NeuralNetwork>, loops_amount: u32, show_log: bool) 
                             print!("w");
                             std::io::stdout().flush().unwrap();
                         }
-                        // player_i.rating += delta_rating_2 / 5.0;
-                        // player_j.rating -= delta_rating_2 / 5.0;
-                        player_i.rating += 3.0;
+                        player_i.rating += delta_rating_2 / 5.0;
+                        player_j.rating -= delta_rating_2 / 5.0;
+                        // player_i.rating += 3.0;
                         // player_j.rating -= 3.0;
                     },
                     EnumWhoWon::BlackByPoints => {
@@ -571,10 +572,10 @@ fn play_tournament (nns: Vec<NeuralNetwork>, loops_amount: u32, show_log: bool) 
                             print!("b");
                             std::io::stdout().flush().unwrap();
                         }
-                        // player_i.rating -= delta_rating_1 / 5.0;
-                        // player_j.rating += delta_rating_1 / 5.0;
+                        player_i.rating -= delta_rating_1 / 5.0;
+                        player_j.rating += delta_rating_1 / 5.0;
                         // player_i.rating -= 3.0;
-                        player_j.rating += 3.0;
+                        // player_j.rating += 3.0;
                     },
                     EnumWhoWon::DrawByPoints => {
                         if show_log {
@@ -583,14 +584,14 @@ fn play_tournament (nns: Vec<NeuralNetwork>, loops_amount: u32, show_log: bool) 
                             std::io::stdout().flush().unwrap();
                         }
                         if player_i.rating > player_j.rating {
-                            // player_i.rating -= delta_rating_2 / 20.0;
-                            // player_j.rating += delta_rating_2 / 20.0;
+                            player_i.rating -= delta_rating_2 / 20.0;
+                            player_j.rating += delta_rating_2 / 20.0;
                             // player_i.rating -= 0.3;
                             // player_j.rating += 0.3;
                         }
                         else if player_j.rating > player_i.rating {
-                            // player_i.rating += delta_rating_2 / 20.0;
-                            // player_j.rating -= delta_rating_2 / 20.0;
+                            player_i.rating += delta_rating_2 / 20.0;
+                            player_j.rating -= delta_rating_2 / 20.0;
                             // player_i.rating += 0.3;
                             // player_j.rating -= 0.3;
                         }
