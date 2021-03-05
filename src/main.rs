@@ -669,11 +669,12 @@ fn sum_vec (vec: &Vec<usize>) -> usize {
 
 
 fn main () {
+    let nn_heights: Vec<usize> = vec![64, 200, 200, 200, 1];
     // let nn_heights: Vec<usize> = vec![64, 100, 100, 100, 1];
     // let nn_heights: Vec<usize> = vec![64, 60, 40, 20, 1];
     // let nn_heights: Vec<usize> = vec![64, 20, 20, 20, 1];
     // let nn_heights: Vec<usize> = vec![64, 200, 200, 1];
-    let nn_heights: Vec<usize> = vec![64, 100, 100, 1];
+    // let nn_heights: Vec<usize> = vec![64, 100, 100, 1];
     // let nn_heights: Vec<usize> = vec![64, 10, 10, 1];
     // let nn_heights: Vec<usize> = vec![64, 1000, 1];
     // let nn_heights: Vec<usize> = vec![64, 100, 1];
@@ -688,7 +689,7 @@ fn main () {
     let weight_min: f32 = -1.0;
     let weight_max: f32 = 1.0;
 
-    let players_amount: usize = 20;
+    let players_amount: usize = 10;
     assert!(players_amount > 1, "players_amount={} should be > 1, else its useless", players_amount);
 
     // let mut nns: Vec<NeuralNetwork> = (0..players_amount).map(|_i| create_nn_with_const_weights(&nn_heights, 1.0)).collect();
@@ -726,7 +727,9 @@ fn main () {
             }
             let evolution_factor: f32 = generation_to_evolve_factor(generation, generations);
             println!("evolving with evolution_factor = {}%", 100.0*evolution_factor);
-            println!("approx neurons_to_evolve = {}", evolution_factor*((sum_vec(&nn_heights)-nn_heights[0]) as f32));
+
+            let approx_neurons_to_evolve: f32 = evolution_factor*((sum_vec(&nn_heights)-nn_heights[0]) as f32);
+            println!("approx neurons_to_evolve = {}", approx_neurons_to_evolve);
 
             // first part is best nns so dont evolve them, but second part will be evolved
             for i in (players_amount/5).max(1)..players_amount {
