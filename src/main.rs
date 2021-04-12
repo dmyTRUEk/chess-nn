@@ -5,8 +5,9 @@
 
 pub mod utils_io;
 pub mod random;
-// pub mod neuron;
-pub mod neural_network;                                                                       
+pub mod neural_network;
+// pub mod neural_network_unmut;
+// pub mod neural_network_gpu;
 pub mod activation_functions;
 
 

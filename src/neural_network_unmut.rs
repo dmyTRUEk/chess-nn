@@ -1,4 +1,5 @@
 /// This file contains all NN functions
+/// This is rewritten with less mutability
 
 use std::fmt;
 
