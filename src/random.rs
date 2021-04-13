@@ -1,7 +1,6 @@
 /// This file contains my random functions for:
-/// - u32
-/// - i32
 /// - f32
+/// - u32
 ///
 /// fast_random_type - function that if called many fast and many times will be almost equal
 /// random_type      - function, that a little bit slower, but dont repeat it self when called fast
@@ -10,23 +9,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 
 
-pub fn fast_random_u32 (min: u32, max: u32) -> u32 {
-    (_fast_random_u32()) % (max-min+1) + min
-}
-
-pub fn fast_random_i32 (min: i32, max: i32) -> i32 {
-    (_fast_random_u32() as i32) % (max-min+1) + min
-}
-
-pub fn fast_random_f32 (min: f32, max: f32) -> f32 {
-    (_fast_random_f32()) * (max-min) + min
-}
-
-
-
-pub fn random_u32 (min: u32, max: u32) -> u32 {
+pub fn random_f32 (min: f32, max: f32) -> f32 {
     // assert!(min <= max, "sould be min <= max, but min={}, max={}", min, max);
-    (_good_random_u32()) % (max-min+1) + min
+    (_good_random_f32()) * (max-min) + min
 }
 
 pub fn random_i32 (min: i32, max: i32) -> i32 {
@@ -34,10 +19,15 @@ pub fn random_i32 (min: i32, max: i32) -> i32 {
     (_good_random_u32() as i32) % (max-min+1) + min
 }
 
-pub fn random_f32 (min: f32, max: f32) -> f32 {
+pub fn random_u32 (min: u32, max: u32) -> u32 {
     // assert!(min <= max, "sould be min <= max, but min={}, max={}", min, max);
-    (_good_random_f32()) * (max-min) + min
+    (_good_random_u32()) % (max-min+1) + min
 }
+
+// pub fn random_usize (min: usize, max: usize) -> usize {
+//     // assert!(min <= max, "sould be min <= max, but min={}, max={}", min, max);
+//     (_good_random_usize()) % (max-min+1) + min
+// }
 
 
 
@@ -58,14 +48,42 @@ pub fn random_i32_m1_or_p1 () -> i32 {
 
 
 
+// pub fn fast_random_f32 (min: f32, max: f32) -> f32 {
+//     (_fast_random_f32()) * (max-min) + min
+// }
+// pub fn fast_random_i32 (min: i32, max: i32) -> i32 {
+//     (_fast_random_u32() as i32) % (max-min+1) + min
+// }
+// pub fn fast_random_u32 (min: u32, max: u32) -> u32 {
+//     (_fast_random_u32()) % (max-min+1) + min
+// }
+
+
+
+fn _good_random_f32 () -> f32 {
+    // 22_695_477 and +1 is from WIKI for random numbers
+    ( (22_695_477_f64*(_fast_random_f32() as f64) + 1_f64) % (1.0_f64) ) as f32
+}
+
+// fn _good_random_i32 () -> i32 {
+//     // 22_695_477 and +1 is from WIKI for random numbers
+//     ( 2 * (22_695_477_u64*(_fast_random_i32() as u64) + 1_u64) % (i32::max_value() as u64) - (i32::max_value()/2) as u64 ) as i32
+// }
+
 fn _good_random_u32 () -> u32 {
     // 22_695_477 and +1 is from WIKI for random numbers
     ( (22_695_477_u64*(_fast_random_u32() as u64) + 1_u64) % (u32::max_value() as u64) ) as u32
 }
 
-fn _good_random_f32 () -> f32 {
-    // 22_695_477 and +1 is from WIKI for random numbers
-    ( (22_695_477_f64*(_fast_random_f32() as f64) + 1_f64) % (1.0_f64) ) as f32
+
+
+fn _fast_random_f32 () -> f32 {
+    let time_now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .subsec_nanos();
+    // 999_999_999 is max time_now, because it is nanoseconds = 10^(-9)
+    (time_now as f32) / (999_999_999 as f32)
 }
 
 fn _fast_random_u32 () -> u32 {
@@ -76,14 +94,29 @@ fn _fast_random_u32 () -> u32 {
     time_now
 }
 
-fn _fast_random_f32 () -> f32 {
-    let time_now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .subsec_nanos();
-    // 999_999_999 is max time_now, because it is nanoseconds = 10^(-9)
-    (time_now as f32) / (999_999_999 as f32)
-}
+// fn _fast_random_i32 () -> i32 {
+//     let time_now = SystemTime::now()
+//         .duration_since(UNIX_EPOCH)
+//         .unwrap()
+//         .subsec_nanos();
+//     time_now as i32
+// }
+
+// fn _fast_random_usize () -> usize {
+//     let time_now = SystemTime::now()
+//         .duration_since(UNIX_EPOCH)
+//         .unwrap()
+//         .subsec_nanos();
+//     time_now as usize
+// }
+
+// fn _fast_random_isize () -> isize {
+//     let time_now = SystemTime::now()
+//         .duration_since(UNIX_EPOCH)
+//         .unwrap()
+//         .subsec_nanos();
+//     time_now as isize
+// }
 
 
 
