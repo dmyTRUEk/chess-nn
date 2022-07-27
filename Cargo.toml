@@ -1,20 +1,22 @@
 [package]
 name = "chess_nn"
-version = "0.1.0"
-authors = ["dmyTRUEk <m.dmytruk21@gmail.com>"]
-edition = "2018"
+version = "0.2.0"
+authors = ["dmyTRUEk"]
+edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [profile.release]
-lto = true
-target-cpu = "native"
-codegen-units = 1
 opt-level = 3
+lto = true
+codegen-units = 1
 panic = "abort"
-#debuginfo = 0
+# target-cpu = "native"
+# debuginfo = 0
 
 [dependencies]
+arrayfire = "3.8.0"
 #chess = "3.1.1"
 #chess = { git = "https://github.com/jordanbray/chess/commit/6693cacb2e77297b40349096f1aabbdb7baf0f66?branch=6693cacb2e77297b40349096f1aabbdb7baf0f66&diff=split" }
 chess = { git = "https://github.com/jordanbray/chess", rev = "6693cac" }
+rand = "0.8.5"

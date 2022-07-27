@@ -4,14 +4,14 @@ use std::io::Write;
 
 
 
-pub fn wait_for_enter () {
+pub fn wait_for_enter() {
     let mut line: String = String::new();
     std::io::stdin().read_line(&mut line).unwrap();
 }
 
 
 
-pub fn flush () {
+pub fn flush() {
     std::io::stdout().flush().unwrap();
 }
 

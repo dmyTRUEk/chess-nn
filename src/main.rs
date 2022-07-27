@@ -1,24 +1,20 @@
-/*
- * Main file :)
- *
- */
+/// Main file
 
 pub mod utils_io;
 pub mod random;
 pub mod neural_network;
-// pub mod neural_network_unmut;
 // pub mod neural_network_gpu;
 pub mod activation_functions;
 
-
-// use std::io::Write;
 use std::collections::HashMap;
 
 use chess::*;
+use arrayfire::{info, set_device, device_count, device_info};
 
 use crate::utils_io::*;
 use crate::random::*;
 use crate::neural_network::*;
+// use crate::neural_network_gpu::*;
 
 
 
@@ -31,7 +27,130 @@ use crate::neural_network::*;
 
 
 
-fn fen_to_human_viewable (fen: String, beautiful_output: bool) -> String {
+const PLAYERS_AMOUNT: usize = 5;
+
+const GENERATIONS: u32 = 100;
+
+const ALLOW_WIN_BY_POINTS: bool = true;
+
+// the 65's neuron needed for choosing move a bit random
+const USE_65_NEURONS: bool = false;
+
+const MOVES_LIMIT: u32 = 200;
+
+
+// const NN_HEIGHTS: [usize; 5] = [64, 100, 100, 100, 1];
+
+
+fn main() {
+    // let nn_heights: Vec<usize> = vec![64, 700, 600, 500, 400, 300, 200, 100, 1];
+    // let nn_heights: Vec<usize> = vec![64, 100, 100, 100, 100, 100, 100, 1];
+    // let nn_heights: Vec<usize> = vec![64, 1000, 1000, 1000, 1];
+    // let nn_heights: Vec<usize> = vec![64, 200, 200, 200, 1];
+    // let nn_heights: Vec<usize> = vec![64, 100, 100, 100, 1];
+    // let nn_heights: Vec<usize> = vec![64, 60, 40, 20, 1];
+    // let nn_heights: Vec<usize> = vec![64, 20, 20, 20, 1];
+    // let nn_heights: Vec<usize> = vec![64, 200, 200, 1];
+    let nn_heights: Vec<usize> = vec![64, 100, 100, 1];
+    // let nn_heights: Vec<usize> = vec![64, 10, 10, 1];
+    // let nn_heights: Vec<usize> = vec![64, 1000, 1];
+    // let nn_heights: Vec<usize> = vec![64, 100, 1];
+    // let nn_heights: Vec<usize> = vec![64, 10, 1];
+    // let nn_heights: Vec<usize> = vec![64, 1];
+
+    let nn_heights: Vec<usize> = {
+        let mut nn_heights_new: Vec<usize> = nn_heights;
+        if USE_65_NEURONS {
+            nn_heights_new[0] += 1;
+        }
+        nn_heights_new
+    };
+
+    assert!(
+        nn_heights.len() >= 2,
+        "nn_heights.len()={}, should be >= 2, else its useless", nn_heights.len()
+    );
+    assert_eq!(
+        nn_heights[0],
+        if !USE_65_NEURONS { 64 } else { 65 },
+        "nn_heights[0]={}, should be == 65, else its impossible", nn_heights[0]
+    );
+    assert_eq!(
+        nn_heights[nn_heights.len()-1],
+        1,
+        "nn_heights[last]={}, should be == 1, else its useless", nn_heights[nn_heights.len()-1]
+    );
+    assert!(
+        PLAYERS_AMOUNT > 1,
+        "PLAYERS_AMOUNT={} should be > 1, else its useless",
+        PLAYERS_AMOUNT
+    );
+
+    println!("devices avalaible: {}", device_count());
+    set_device(0);
+    println!("{:?}", device_info());
+    info();
+
+    let mut nns: Vec<NeuralNetwork> = (0..PLAYERS_AMOUNT)
+        .map(|_i| NeuralNetwork::with_random_weights(&nn_heights, -0.1, 0.5)).collect();
+        // .map(|_i| NeuralNetwork::with_const_weights(&nn_heights, 1.0)).collect();
+    let mut nns_old: Vec<NeuralNetwork>;
+    let mut new_best_same_counter: u32 = 0;
+
+    for generation in 0..=GENERATIONS {
+        println!("generation: {} / {}", generation, GENERATIONS);
+
+        nns_old = nns.clone();
+
+        nns = play_tournament(nns, true);
+
+        if generation < GENERATIONS {
+            fn generation_to_evolve_factor(gen: u32, gens: u32) -> f32 {
+                // ( -(gen as f32) / (gens as f32).sqrt() ).exp()
+                // ( -(gen as f32) / (gens as f32).powf(0.8) ).exp()
+                // ( -(gen as f32) / (gens as f32) ).exp()
+                // ( - 3.0 * (gen as f32) / (gens as f32) ).exp()
+                // 0.3 * ( -(gen as f32) / (gens as f32) ).exp()
+                // 0.9 * ( -(gen as f32) / (gens as f32) ).exp()
+                0.4 * ( - 5.0 * (gen as f32) / (gens as f32) ).exp()
+                // 0.1 * ( -(gen as f32) / (gens as f32) ).exp()
+                // 0.1 * ( - 3.0 * (gen as f32) / (gens as f32) ).exp()
+            }
+            let evolution_factor: f32 = generation_to_evolve_factor(generation, GENERATIONS);
+            println!("evolving with evolution_factor = {}%", 100.0*evolution_factor);
+
+            let approx_neurons_to_evolve: f32 = evolution_factor*((sum_vec(&nn_heights)-nn_heights[0]) as f32);
+            println!("approx neurons_to_evolve = {}", approx_neurons_to_evolve);
+
+            // first part is best nns so dont evolve them, but second part will be evolved
+            for i in 1..PLAYERS_AMOUNT {
+                nns[i] = nns[0].clone();
+                nns[i].evolve(evolution_factor);
+            }
+        }
+
+        if nns_old[0] == nns[0] && generation > 0 {
+            new_best_same_counter += 1;
+            println!("CAUTION: NEW BEST IS SAME {} TIMES!!!", new_best_same_counter);
+        }
+        else {
+            new_best_same_counter = 0;
+        }
+
+        println!("\n");
+
+    }
+
+    println!("evolution finished successfuly!");
+
+    // println!("best_nn = {}\n\n", nns[0]);
+}
+
+
+
+
+
+fn fen_to_human_viewable(fen: String, beautiful_output: bool) -> String {
     let mut res: String = "".to_string();
     // println!("{}", board);
     // res += &board.to_string();
@@ -98,16 +217,17 @@ fn fen_to_human_viewable (fen: String, beautiful_output: bool) -> String {
     return res;
 }
 
-// fn fen_to_human_viewable_with_fen (fen: String, beautiful_output: bool) -> String {
+// fn fen_to_human_viewable_with_fen(fen: String, beautiful_output: bool) -> String {
 //     fen.clone() + &fen_to_human_viewable(fen, beautiful_output)
 // }
 
-fn board_to_human_viewable (board: Board, beautiful_output: bool) -> String {
+// TODO: make rid of it
+fn board_to_human_viewable(board: Board, beautiful_output: bool) -> String {
     // board_to_string(Board::from_fen(fen).unwrap(), beautiful_output)
     fen_to_human_viewable(board.to_string(), beautiful_output)
 }
 
-// fn board_to_human_viewable_with_fen (board: Board, beautiful_output: bool) -> String {
+// fn board_to_human_viewable_with_fen(board: Board, beautiful_output: bool) -> String {
 //     board.to_string() + &board_to_human_viewable(board, beautiful_output)
 // }
 
@@ -169,14 +289,14 @@ struct PiecesValue {
 
 const PIECES_VALUE: PiecesValue = PiecesValue {
     pawn: 1.0,
-    knight: 2.5,
+    knight: 2.7,
     bishop: 3.0,
     rook: 5.0,
-    queen: 7.0,
-    king: 10.0,
+    queen: 9.0,
+    king: 100.0,
 };
 
-fn analyze(board: Board, mut nn: NeuralNetwork) -> f32 {
+fn analyze(board: Board, nn: NeuralNetwork) -> f32 {
     let mut array_board: Vec<f32> = vec![0.0; if !USE_65_NEURONS { 64 } else { 65 }];
     let mut n: usize = 0;
     for (_i, c) in board_to_human_viewable(board, false).to_string().chars().enumerate() {
@@ -224,18 +344,13 @@ enum EnumWhoWon {
     DrawByPoints,
 }
 
-struct MoveWithMark {
-    pub chess_move: ChessMove,
-    pub mark: f32,
-}
-
-fn make_move (board: Board, chess_move: ChessMove) -> Board {
+fn make_move(board: Board, chess_move: ChessMove) -> Board {
     let mut board_res: Board = board;
     board.make_move(chess_move, &mut board_res);
     board_res
 }
 
-fn actions_to_string (actions: Vec<Action>) -> String {
+fn actions_to_string(actions: Vec<Action>) -> String {
     let mut res: String = "".to_string();
     for action in actions {
         match action {
@@ -262,11 +377,16 @@ fn actions_to_string (actions: Vec<Action>) -> String {
 
 
 
-fn play_game (nn_white: NeuralNetwork, nn_black: NeuralNetwork, show_log: bool, get_game: bool) -> (EnumWhoWon, Option<String>) {
-    assert_eq!(nn_white.neurons[0].len(), if !USE_65_NEURONS { 64 } else { 65 });
-    assert_eq!(nn_black.neurons[0].len(), if !USE_65_NEURONS { 64 } else { 65 });
+fn play_game(
+    nn_white: NeuralNetwork, 
+    nn_black: NeuralNetwork, 
+    show_log: bool, 
+    get_game: bool
+) -> (EnumWhoWon, Option<String>) {
+    assert_eq!(nn_white.weight[0].len(), if !USE_65_NEURONS { 64 } else { 65 });
+    assert_eq!(nn_black.weight[0].len(), if !USE_65_NEURONS { 64 } else { 65 });
 
-    let mut move_n: u32 = 0;
+    let mut moves_amount: u32 = 0;
 
     // let mut board_now = Board::default();
     // let mut game = Game::new_with_board(Board::from_fen(FEN_INIT_POSITION.to_string()).unwrap());
@@ -277,19 +397,24 @@ fn play_game (nn_white: NeuralNetwork, nn_black: NeuralNetwork, show_log: bool, 
         println!("{}", game.current_position());
     }
 
-    while game.result() == None && move_n < 2*MOVES_LIMIT {
-        move_n += 1;
+    struct MoveWithMark {
+        pub chess_move: ChessMove,
+        pub mark: f32,
+    }
 
-        let moves = MoveGen::new_legal(&game.current_position());
+    while game.result() == None && moves_amount < 2*MOVES_LIMIT {
+        moves_amount += 1;
+
+        let possible_moves = MoveGen::new_legal(&game.current_position());
         let mut omwm_best: Option<MoveWithMark> = None;
 
         let side_to_move: Color = game.current_position().side_to_move();
 
-        for move_possible in moves {
-            let board_possible: Board = make_move(game.current_position(), move_possible);
-            
+        for move_ in possible_moves {
+            let board_possible: Board = make_move(game.current_position(), move_);
+
             // println!("{}", board_to_string_with_fen(board_possible, false));
-            
+
             // let side_to_move: Color = board_possible.side_to_move();
 
             // let mark_possible: f32 = match side_to_move {
@@ -300,14 +425,15 @@ fn play_game (nn_white: NeuralNetwork, nn_black: NeuralNetwork, show_log: bool, 
             //         analyze(board_possible, nn_black.clone())
             //     }
             // };
+
             let mark_possible: f32 = analyze(
-                board_possible, 
+                board_possible,
                 match side_to_move {
                     Color::White => { nn_white.clone() }
                     Color::Black => { nn_black.clone() }
                 }
             );
-            let mwm_possible = MoveWithMark{chess_move: move_possible, mark: mark_possible};
+            let mwm_possible = MoveWithMark{chess_move: move_, mark: mark_possible};
             if show_log {
                 println!("{} -> {}", mwm_possible.chess_move, mwm_possible.mark);
             }
@@ -317,12 +443,15 @@ fn play_game (nn_white: NeuralNetwork, nn_black: NeuralNetwork, show_log: bool, 
                     omwm_best = Some(mwm_possible);
                 }
                 Some(ref mwm_best) => {
-                    if (mwm_possible.mark - mwm_best.mark) * match side_to_move {Color::White=>{1.0}, Color::Black=>{-1.0}} > 0.0 {
+                    let sign = match side_to_move {
+                        Color::White => { 1.0 }
+                        Color::Black => { -1.0 }
+                    };
+                    if sign * (mwm_possible.mark - mwm_best.mark) > 0.0 {
                         omwm_best = Some(mwm_possible);
                     }
                 }
             }
-            // println!("\n\n");
         }
 
         match omwm_best {
@@ -347,7 +476,7 @@ fn play_game (nn_white: NeuralNetwork, nn_black: NeuralNetwork, show_log: bool, 
 
         if game.can_declare_draw() {
             if ALLOW_WIN_BY_POINTS {
-                move_n = 2*MOVES_LIMIT;
+                moves_amount = 2*MOVES_LIMIT;
                 break;
             }
             else {
@@ -356,7 +485,7 @@ fn play_game (nn_white: NeuralNetwork, nn_black: NeuralNetwork, show_log: bool, 
         }
 
         if show_log {
-            println!("move_n = {}", move_n);
+            println!("move_n = {}", moves_amount);
             println!("{}", board_to_human_viewable(game.current_position(), true));
             // println!("{}", game.current_position());
             // println!("{:?}", game);
@@ -373,7 +502,7 @@ fn play_game (nn_white: NeuralNetwork, nn_black: NeuralNetwork, show_log: bool, 
         }
     };
 
-    if move_n < 2*MOVES_LIMIT {   // true victory/lose:
+    if moves_amount < 2*MOVES_LIMIT {   // true victory/lose:
         let game_res: GameResult = game.result().unwrap();
         if show_log {
             println!("game result: {:?}", game_res);
@@ -436,18 +565,18 @@ fn play_game (nn_white: NeuralNetwork, nn_black: NeuralNetwork, show_log: bool, 
 
 
 
-// fn min (a: f32, b: f32) -> f32 {
+// fn min(a: f32, b: f32) -> f32 {
 //     if a < b { a } else { b }
 // }
-// fn max (a: f32, b: f32) -> f32 {
+// fn max(a: f32, b: f32) -> f32 {
 //     if a > b { a } else { b }
 // }
-// fn sort_asc (v: Vec<f32>) -> Vec<f32> {
+// fn sort_asc(v: Vec<f32>) -> Vec<f32> {
 //     let mut res_v = v;
 //     res_v.sort_by(|a, b| a.partial_cmp(b).unwrap());
 //     res_v
 // }
-// fn sort_desc (v: Vec<f32>) -> Vec<f32> {
+// fn sort_desc(v: Vec<f32>) -> Vec<f32> {
 //     let mut res_v = v;
 //     res_v.sort_by(|a, b| b.partial_cmp(a).unwrap());
 //     res_v
@@ -460,161 +589,138 @@ struct Player {
 }
 
 // impl PartialEq for Player {
-//     fn eq (&self, other: &Self) -> bool {
+//     fn eq(&self, other: &Self) -> bool {
 //         return false;
 //     }
 // }
 // impl Eq for Player {}
 
-fn logistic (x: f32) -> f32 {
+fn logistic(x: f32) -> f32 {
     100.0 / ( 1.0 + 10.0_f32.powf(x/400.0) )
 }
 
-fn play_tournament (nns: Vec<NeuralNetwork>, loops_amount: u32, show_log: bool) -> Vec<NeuralNetwork> {
-    let default_rating: f32 = 1000.0;
-    let mut players: Vec<Player> = nns.into_iter().map(|nn| Player{nn, rating: default_rating}).collect();
-    // let players_amount: usize = players.len();
+fn play_tournament(nns: Vec<NeuralNetwork>, show_log: bool) -> Vec<NeuralNetwork> {
+    const DEFAULT_RATING: f32 = 1000.0;
+    let mut players: Vec<Player> = nns.into_iter().map(|nn| Player{nn, rating: DEFAULT_RATING}).collect();
 
-    // let game_n_max = 2 * PLAYERS_AMOUNT * (PLAYERS_AMOUNT - 1) / 2;
-    // let mut game_n = 0;
     let mut tournament_statistics: HashMap<EnumWhoWon, u32> = HashMap::new();
 
-    for loop_n in 1..=loops_amount {
-        if show_log && loops_amount > 1 {
-            print!("loop {} / {}: ", loop_n, loops_amount);
-            flush();
-        }
-        for i in 0..PLAYERS_AMOUNT {
-            // println!();
-            for j in 0..PLAYERS_AMOUNT {
-                if i == j { continue; }
-                // if show_log {
-                //     game_n += 1;
-                //     print!("  {}/{}: ", game_n, game_n_max);
-                // }
+    for i in 0..PLAYERS_AMOUNT {
+        for j in 0..PLAYERS_AMOUNT {
+            if i == j { continue; }
+            let mut player_i: Player = players[i].clone();
+            let mut player_j: Player = players[j].clone();
 
-                let mut player_i: Player = players[i].clone();
-                let mut player_j: Player = players[j].clone();
+            let game_res = play_game(player_i.nn.clone(), player_j.nn.clone(), false, false);
+            let game_res_who_won: EnumWhoWon = game_res.0;
 
-                let game_res = play_game(player_i.nn.clone(), player_j.nn.clone(), false, false);
-                let game_res_who_won: EnumWhoWon = game_res.0;
+            let delta_rating_1 = logistic(player_j.rating - player_i.rating);
+            let delta_rating_2 = logistic(player_i.rating - player_j.rating);
 
-                let delta_rating_1 = logistic(player_j.rating - player_i.rating);
-                let delta_rating_2 = logistic(player_i.rating - player_j.rating);
+            let counter = tournament_statistics.entry(game_res_who_won.clone()).or_insert(0);
+            *counter += 1;
 
-                // if show_log {
-                //     println!("old ratings: i={}, j={}", player_i.rating, player_j.rating);
-                // }
-                
-                let counter = tournament_statistics.entry(game_res_who_won.clone()).or_insert(0);
-                *counter += 1;
-
-                match game_res_who_won {
-                    EnumWhoWon::White => {
-                        if show_log {
-                            // print!("White won! ");
-                            print!("W");
-                            flush();
-                        }
-                        player_i.rating += delta_rating_2;
-                        player_j.rating -= delta_rating_2;
-                        // player_i.rating += 10.0;
-                        // player_j.rating -= 10.0;
+            match game_res_who_won {
+                EnumWhoWon::White => {
+                    if show_log {
+                        // print!("White won! ");
+                        print!("W");
+                        flush();
                     }
-                    EnumWhoWon::Black => {
-                        if show_log {
-                            // print!("Black won! ");
-                            print!("B");
-                            flush();
-                        }
-                        player_i.rating -= delta_rating_1;
-                        player_j.rating += delta_rating_1;
-                        // player_i.rating -= 10.0;
-                        // player_j.rating += 10.0;
+                    player_i.rating += delta_rating_2;
+                    player_j.rating -= delta_rating_2;
+                    // player_i.rating += 10.0;
+                    // player_j.rating -= 10.0;
+                }
+                EnumWhoWon::Black => {
+                    if show_log {
+                        // print!("Black won! ");
+                        print!("B");
+                        flush();
                     }
-                    EnumWhoWon::Draw => {
-                        if show_log {
-                            // print!("Draw! ");
-                            print!("D");
-                            flush();
-                        }
-                        if player_i.rating > player_j.rating {
-                            player_i.rating -= delta_rating_2 / 10.0;
-                            player_j.rating += delta_rating_2 / 10.0;
-                            // player_i.rating -= 1.0;
-                            // player_j.rating += 1.0;
-                        }
-                        else if player_j.rating > player_i.rating {
-                            player_i.rating += delta_rating_2 / 10.0;
-                            player_j.rating -= delta_rating_2 / 10.0;
-                            // player_i.rating += 1.0;
-                            // player_j.rating -= 1.0;
-                        }
-                        else { // equal
-                            // nothing
-                        }
+                    player_i.rating -= delta_rating_1;
+                    player_j.rating += delta_rating_1;
+                    // player_i.rating -= 10.0;
+                    // player_j.rating += 10.0;
+                }
+                EnumWhoWon::Draw => {
+                    if show_log {
+                        // print!("Draw! ");
+                        print!("D");
+                        flush();
                     }
-                    EnumWhoWon::WhiteByPoints => {
-                        if show_log {
-                            // print!("WhiteByPoints won! ");
-                            print!("w");
-                            flush();
-                        }
-                        player_i.rating += delta_rating_2 / 5.0;
-                        player_j.rating -= delta_rating_2 / 5.0;
-                        // player_i.rating += 3.0;
-                        // player_j.rating -= 3.0;
+                    if player_i.rating > player_j.rating {
+                        player_i.rating -= delta_rating_2 / 10.0;
+                        player_j.rating += delta_rating_2 / 10.0;
+                        // player_i.rating -= 1.0;
+                        // player_j.rating += 1.0;
                     }
-                    EnumWhoWon::BlackByPoints => {
-                        if show_log {
-                            // print!("BlackByPoints won! ");
-                            print!("b");
-                            flush();
-                        }
-                        player_i.rating -= delta_rating_1 / 5.0;
-                        player_j.rating += delta_rating_1 / 5.0;
-                        // player_i.rating -= 3.0;
-                        // player_j.rating += 3.0;
+                    else if player_j.rating > player_i.rating {
+                        player_i.rating += delta_rating_2 / 10.0;
+                        player_j.rating -= delta_rating_2 / 10.0;
+                        // player_i.rating += 1.0;
+                        // player_j.rating -= 1.0;
                     }
-                    EnumWhoWon::DrawByPoints => {
-                        if show_log {
-                            // print!("DrawByPoints! ");
-                            print!("d");
-                            flush();
-                        }
-                        if player_i.rating > player_j.rating {
-                            player_i.rating -= delta_rating_2 / 20.0;
-                            player_j.rating += delta_rating_2 / 20.0;
-                            // player_i.rating -= 0.3;
-                            // player_j.rating += 0.3;
-                        }
-                        else if player_j.rating > player_i.rating {
-                            player_i.rating += delta_rating_2 / 20.0;
-                            player_j.rating -= delta_rating_2 / 20.0;
-                            // player_i.rating += 0.3;
-                            // player_j.rating -= 0.3;
-                        }
-                        else { // equal
-                            // nothing
-                        }
+                    else { // equal
+                        // nothing
                     }
                 }
-                // if show_log {
-                //     println!("new ratings: i={}, j={}", player_i.rating, player_j.rating);
-                //     println!();
-                // }
-
-                players[i].rating = player_i.rating;
-                players[j].rating = player_j.rating;
+                EnumWhoWon::WhiteByPoints => {
+                    if show_log {
+                        // print!("WhiteByPoints won! ");
+                        print!("w");
+                        flush();
+                    }
+                    player_i.rating += delta_rating_2 / 5.0;
+                    player_j.rating -= delta_rating_2 / 5.0;
+                    // player_i.rating += 3.0;
+                    // player_j.rating -= 3.0;
+                }
+                EnumWhoWon::BlackByPoints => {
+                    if show_log {
+                        // print!("BlackByPoints won! ");
+                        print!("b");
+                        flush();
+                    }
+                    player_i.rating -= delta_rating_1 / 5.0;
+                    player_j.rating += delta_rating_1 / 5.0;
+                    // player_i.rating -= 3.0;
+                    // player_j.rating += 3.0;
+                }
+                EnumWhoWon::DrawByPoints => {
+                    if show_log {
+                        // print!("DrawByPoints! ");
+                        print!("d");
+                        flush();
+                    }
+                    if player_i.rating > player_j.rating {
+                        player_i.rating -= delta_rating_2 / 20.0;
+                        player_j.rating += delta_rating_2 / 20.0;
+                        // player_i.rating -= 0.3;
+                        // player_j.rating += 0.3;
+                    }
+                    else if player_j.rating > player_i.rating {
+                        player_i.rating += delta_rating_2 / 20.0;
+                        player_j.rating -= delta_rating_2 / 20.0;
+                        // player_i.rating += 0.3;
+                        // player_j.rating -= 0.3;
+                    }
+                    else { // equal
+                        // nothing
+                    }
+                }
             }
-            print!(" ");
-        }
+            // if show_log {
+            //     println!("new ratings: i={}, j={}", player_i.rating, player_j.rating);
+            //     println!();
+            // }
 
-        if show_log && loops_amount > 1 {
-            let ratings: Vec<f32> = players.clone().iter().map(|p| p.rating).collect();
-            println!("\ncurrent ratings: \nplayers: {:?}\n", ratings);
+            players[i].rating = player_i.rating;
+            players[j].rating = player_j.rating;
         }
+        print!(" ");
     }
+    println!();
 
     // sort players:
     let players_sorted: Vec<Player> = {
@@ -624,8 +730,7 @@ fn play_tournament (nns: Vec<NeuralNetwork>, loops_amount: u32, show_log: bool) 
     };
 
     if show_log {
-        println!();
-        println!("stats: {:?}", tournament_statistics);
+        println!("\nstats: {:?}", tournament_statistics);
 
         let ratings_sorted: Vec<f32> = players_sorted.clone().iter().map(|p| p.rating).collect();
         println!("final ratings (sorted): {:?}", ratings_sorted);
@@ -651,155 +756,16 @@ fn play_tournament (nns: Vec<NeuralNetwork>, loops_amount: u32, show_log: bool) 
         }
     }
 
-    // player_best.nn
     players_sorted.into_iter().map(|p| p.nn).collect()
 }
 
 
 
-fn sum_vec (vec: &Vec<usize>) -> usize {
+fn sum_vec(vec: &Vec<usize>) -> usize {
     let mut res: usize = 0;
     for item in vec {
         res += item;
     }
     res
 }
-
-
-
-const ALLOW_WIN_BY_POINTS: bool = false;
-const MOVES_LIMIT: u32 = 200;
-
-const USE_65_NEURONS: bool = true;
-
-const PLAYERS_AMOUNT: usize = 10;
-
-const GENERATIONS: u32 = 1000;
-
-fn main () {
-    // let nn_heights: Vec<usize> = vec![64, 1000, 1000, 1000, 1];
-    // let nn_heights: Vec<usize> = vec![64, 200, 200, 200, 1];
-    // let nn_heights: Vec<usize> = vec![64, 100, 100, 100, 1];
-    // let nn_heights: Vec<usize> = vec![64, 60, 40, 20, 1];
-    // let nn_heights: Vec<usize> = vec![64, 20, 20, 20, 1];
-    // let nn_heights: Vec<usize> = vec![64, 200, 200, 1];
-    let nn_heights: Vec<usize> = vec![64, 100, 100, 1];
-    // let nn_heights: Vec<usize> = vec![64, 10, 10, 1];
-    // let nn_heights: Vec<usize> = vec![64, 1000, 1];
-    // let nn_heights: Vec<usize> = vec![64, 100, 1];
-    // let nn_heights: Vec<usize> = vec![64, 20, 1];
-    // let nn_heights: Vec<usize> = vec![64, 10, 1];
-    // let nn_heights: Vec<usize> = vec![64, 1];
-
-    let nn_heights: Vec<usize> = {
-        let mut nn_heights_new: Vec<usize> = nn_heights;
-        if USE_65_NEURONS {
-            nn_heights_new[0] += 1;
-        }
-        nn_heights_new
-    };
-    
-    assert!(nn_heights.len() >= 2, "nn_heights.len()={}, should be >= 2, else its useless", nn_heights.len());
-    assert!(nn_heights[0] == if !USE_65_NEURONS { 64 } else { 65 }, "nn_heights[0]={}, should be == 65, else its impossible", nn_heights[0]);
-    assert!(nn_heights[nn_heights.len()-1] == 1, "nn_heights[last]={}, should be == 1, else its useless", nn_heights[nn_heights.len()-1]);
-
-    let weight_min: f32 = -1.0;
-    let weight_max: f32 = 1.0;
-
-    // let players_amount: usize = 10;
-    assert!(PLAYERS_AMOUNT > 1, "PLAYERS_AMOUNT={} should be > 1, else its useless", PLAYERS_AMOUNT);
-
-    // let mut nns: Vec<NeuralNetwork> = (0..PLAYERS_AMOUNT).map(|_i| create_nn_with_const_weights(&nn_heights, 1.0)).collect();
-    let mut nns: Vec<NeuralNetwork> = (0..PLAYERS_AMOUNT)
-        .map(|_i| create_nn_with_random_weights(&nn_heights, weight_min, weight_max)).collect();
-    let mut nns_old: Vec<NeuralNetwork>;
-    let mut new_best_same_counter: u32 = 0;
-
-
-
-    for generation in 0..=GENERATIONS {
-        println!("generation: {} / {}", generation, GENERATIONS);
-
-        nns_old = nns.clone();
-
-        let loops_amount: u32 = 1;
-        nns = play_tournament(
-            nns,
-            loops_amount,
-            true
-        );
-
-        // println!("nn_best = {}", nns[0]);
-
-        if generation < GENERATIONS {
-            fn generation_to_evolve_factor (gen: u32, gens: u32) -> f32 {
-                // ( -(gen as f32) / (gens as f32).sqrt() ).exp()
-                // ( -(gen as f32) / (gens as f32).powf(0.8) ).exp()
-                // ( -(gen as f32) / (gens as f32) ).exp()
-                // ( - 3.0 * (gen as f32) / (gens as f32) ).exp()
-                0.3 * ( -(gen as f32) / (gens as f32) ).exp()
-                // 0.3 * ( - 3.0 * (gen as f32) / (gens as f32) ).exp()
-                // 0.1 * ( -(gen as f32) / (gens as f32) ).exp()
-                // 0.1 * ( - 3.0 * (gen as f32) / (gens as f32) ).exp()
-            }
-            let evolution_factor: f32 = generation_to_evolve_factor(generation, GENERATIONS);
-            println!("evolving with evolution_factor = {}%", 100.0*evolution_factor);
-
-            let approx_neurons_to_evolve: f32 = evolution_factor*((sum_vec(&nn_heights)-nn_heights[0]) as f32);
-            println!("approx neurons_to_evolve = {}", approx_neurons_to_evolve);
-
-            // first part is best nns so dont evolve them, but second part will be evolved
-            for i in (PLAYERS_AMOUNT/5).max(1)..PLAYERS_AMOUNT {
-                nns[i] = nns[0].clone();
-                nns[i].evolve(evolution_factor);
-            }
-        }
-
-        // if generation % 10 == 0 {
-        //     for i in 0..PLAYERS_AMOUNT {
-        //         println!("nns[{}] = {}", i, nns[i]);
-        //     }
-        // }
-
-        // assert_ne!(nns_old, nns);
-
-        if nns_old[0] == nns[0] && generation > 0 {
-            new_best_same_counter += 1;
-            println!("CAUTION: NEW BEST IS SAME {} TIMES!!!", new_best_same_counter);
-        }
-        else {
-            new_best_same_counter = 0;
-        }
-
-        // for i in 0..PLAYERS_AMOUNT {
-        //     println!("nns[{}] = {}", i, nns[i]);
-        // }
-
-        // for i in 0..PLAYERS_AMOUNT {
-        //     for j in 0..PLAYERS_AMOUNT {
-        //         println!("i={}, j={}", i, j);
-        //         if i == j {
-        //             assert_eq!(nns[i], nns[j]);
-        //             continue;
-        //         }
-        //         assert_ne!(nns[i], nns[j]);
-        //     }
-        // }
-
-        println!("\n");
-
-    }
-
-    println!("evolution finished successfuly!");
-
-    // println!("here is final nns:");
-    // for i in 0..PLAYERS_AMOUNT {
-    //     println!("nns[{}] = {}\n\n", i, nns[i]);
-    // }
-
-    println!("best_nn = {}\n\n", nns[0]);
-
-}
-
-
 
