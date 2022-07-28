@@ -95,6 +95,23 @@ impl NeuralNetwork {
         nn
     }
 
+    pub fn with_smart_random(heights: &Vec<usize>) -> Self {
+        let mut rng = thread_rng();
+        let mut nn = NeuralNetwork::new(heights);
+        nn.activation_function = get_random_activation_function();
+        for l in 1..nn.weight.len() {
+            for h in 0..nn.weight[l].len() {
+                nn.consts[l][h] = rng.gen_range(-2.0..2.0_f32).powi(2);
+                for c in 0..nn.weight[l][h].len() {
+                    nn.weight[l][h][c] = rng.gen_range(
+                        -1.0/(nn.weight[l-1].len() as f32)..1.0/(nn.weight[l-1].len() as f32)
+                    );
+                }
+            }
+        }
+        nn
+    }
+
 
     pub fn process_input(&self, input: &Vec<f32>) -> Vec<f32> {
         // assert_eq!(if !USE_65_NEURONS {64} else {65}, input.len());
@@ -222,7 +239,7 @@ impl NeuralNetwork {
 
         let total_neurons: u32 = self.get_total_neurons() as u32;
         let neurons_to_evolve: u32 = ((total_neurons as f32) * evolution_factor) as u32;
-        // let neurons_to_evolve: u32 = rng.gen_range(1..=neurons_to_evolve.max(1));
+        let neurons_to_evolve: u32 = rng.gen_range(1..=neurons_to_evolve.max(1));
         // println!("total_neurons = {}", total_neurons);
         // println!("neurons_to_evolve = {}", neurons_to_evolve);
 
@@ -235,7 +252,7 @@ impl NeuralNetwork {
 
             let total_weights: u32 = self.weight[l][h].len() as u32;
             let weights_to_evolve: u32 = ((total_weights as f32) * evolution_factor) as u32;
-            // let weights_to_evolve: u32 = rng.gen_range(1..=weights_to_evolve.max(1));
+            let weights_to_evolve: u32 = rng.gen_range(1..=weights_to_evolve.max(1));
             // println!("total_weights = {}", total_weights);
             // println!("weights_to_evolve = {}", weights_to_evolve);
 

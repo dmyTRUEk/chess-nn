@@ -37,9 +37,10 @@ pub const COMPUTING_UNIT: ComputingUnit = ComputingUnit::CPU;
 
 
 fn main() {
+    let nn_heights: Vec<usize> = vec![64, 60, 40, 20, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1];
     // let nn_heights: Vec<usize> = vec![64, 700, 600, 500, 400, 300, 200, 100, 1];
     // let nn_heights: Vec<usize> = vec![64, 100, 100, 100, 100, 100, 100, 1];
-    let nn_heights: Vec<usize> = vec![64, 80, 60, 40, 20, 10, 1];
+    // let nn_heights: Vec<usize> = vec![64, 60, 40, 20, 10, 1];
     // let nn_heights: Vec<usize> = vec![64, 1000, 1000, 1000, 1];
     // let nn_heights: Vec<usize> = vec![64, 200, 200, 200, 1];
     // let nn_heights: Vec<usize> = vec![64, 100, 100, 100, 1];
@@ -94,11 +95,12 @@ fn main() {
         }
     }
 
-    let (weight_min, weight_max): (f32, f32) = (-0.05, 0.05);
-    let (consts_min, consts_max): (f32, f32) = (-0.05, 0.05);
+    // let (weight_min, weight_max): (f32, f32) = (-0.05, 0.05);
+    // let (consts_min, consts_max): (f32, f32) = (-0.05, 0.05);
 
     let mut nns: Vec<NeuralNetwork> = (0..PLAYERS_AMOUNT)
-        .map(|_| NeuralNetwork::with_random(&nn_heights, weight_min, weight_max, consts_min, consts_max)).collect();
+        // .map(|_| NeuralNetwork::with_random(&nn_heights, weight_min, weight_max, consts_min, consts_max)).collect();
+        .map(|_| NeuralNetwork::with_smart_random(&nn_heights)).collect();
         // .map(|_i| NeuralNetwork::with_const_weights(&nn_heights, 1.0)).collect();
     let mut nns_old: Vec<NeuralNetwork>;
     let mut new_best_same_counter: u32 = 0;
@@ -136,7 +138,7 @@ fn main() {
             }
             let len = nns.len();
             nns[len-2] = NeuralNetwork::with_consts(&nn_heights, 0.01, 0.0, get_random_activation_function());
-            nns[len-1] = NeuralNetwork::with_random(&nn_heights, weight_min, weight_max, consts_min, consts_max);
+            nns[len-1] = NeuralNetwork::with_smart_random(&nn_heights);
         }
 
         if nns_old[0] == nns[0] && generation > 0 {
@@ -298,18 +300,12 @@ struct PiecesValue {
 }
 
 const PIECES_VALUE: PiecesValue = PiecesValue {
-    // pawn: 1.0,
-    // knight: 2.7,
-    // bishop: 3.0,
-    // rook: 5.0,
-    // queen: 9.0,
-    // king: 100.0,
-    pawn: 0.01,
-    knight: 0.02,
-    bishop: 0.03,
-    rook: 0.04,
-    queen: 0.05,
-    king: 0.06,
+    pawn:   1.0,
+    knight: 2.7,
+    bishop: 3.0,
+    rook:   5.0,
+    queen:  9.0,
+    king:   20.0,
 };
 
 fn analyze(board: Board, nn: NeuralNetwork) -> f32 {
@@ -382,6 +378,7 @@ fn actions_to_string(actions: Vec<Action>) -> String {
         }
         res += " ";
     }
+    res.pop();
     res
 }
 
@@ -604,14 +601,22 @@ fn play_tournament(nns: Vec<NeuralNetwork>, show_log: bool) -> Vec<NeuralNetwork
     for i in 0..PLAYERS_AMOUNT {
         for j in 0..PLAYERS_AMOUNT {
             if i == j { continue; }
-            let mut player_i: Player = players[i].clone();
-            let mut player_j: Player = players[j].clone();
+            // w->white, b->black
+            let mut player_w: Player = players[i].clone();
+            let mut player_b: Player = players[j].clone();
 
-            let game_res = play_game(player_i.nn.clone(), player_j.nn.clone(), false, false);
+            let game_res: (EnumWhoWon, Option<String>) = play_game(
+                player_w.nn.clone(),
+                player_b.nn.clone(),
+                false,
+                false
+            );
             let game_res_who_won: EnumWhoWon = game_res.0;
 
-            let delta_rating_1 = logistic(player_j.rating - player_i.rating);
-            let delta_rating_2 = logistic(player_i.rating - player_j.rating);
+            // if white wins
+            let delta_rating_w: f32 = logistic(player_w.rating - player_b.rating);
+            // if black wins
+            let delta_rating_b: f32 = logistic(player_b.rating - player_w.rating);
 
             let counter = tournament_statistics.entry(game_res_who_won.clone()).or_insert(0);
             *counter += 1;
@@ -623,9 +628,9 @@ fn play_tournament(nns: Vec<NeuralNetwork>, show_log: bool) -> Vec<NeuralNetwork
                         print!("W");
                         flush();
                     }
-                    player_i.rating += delta_rating_2;
-                    // player_j.rating -= delta_rating_2;
-                    player_j.rating += delta_rating_2 / 4.0;
+                    player_w.rating += delta_rating_w;
+                    player_b.rating -= delta_rating_w;
+                    // player_j.rating -= delta_rating_2 / 4.0;
                     // player_i.rating += 10.0;
                     // player_j.rating -= 10.0;
                 }
@@ -635,9 +640,9 @@ fn play_tournament(nns: Vec<NeuralNetwork>, show_log: bool) -> Vec<NeuralNetwork
                         print!("B");
                         flush();
                     }
-                    // player_i.rating -= delta_rating_1;
-                    player_i.rating += delta_rating_1 / 4.0;
-                    player_j.rating += delta_rating_1;
+                    player_w.rating -= delta_rating_b;
+                    // player_i.rating += delta_rating_1 / 4.0;
+                    player_b.rating += delta_rating_b;
                     // player_i.rating -= 10.0;
                     // player_j.rating += 10.0;
                 }
@@ -647,15 +652,16 @@ fn play_tournament(nns: Vec<NeuralNetwork>, show_log: bool) -> Vec<NeuralNetwork
                         print!("D");
                         flush();
                     }
-                    if player_i.rating > player_j.rating {
-                        player_i.rating -= delta_rating_2 / 20.0;
-                        player_j.rating += delta_rating_2 / 20.0;
+                    let delta_rating_min: f32 = delta_rating_w.min(delta_rating_b);
+                    if player_w.rating > player_b.rating {
+                        player_w.rating -= delta_rating_min / 3.0;
+                        player_b.rating += delta_rating_min / 3.0;
                         // player_i.rating -= 1.0;
                         // player_j.rating += 1.0;
                     }
-                    else if player_j.rating > player_i.rating {
-                        player_i.rating += delta_rating_2 / 20.0;
-                        player_j.rating -= delta_rating_2 / 20.0;
+                    else if player_b.rating > player_w.rating {
+                        player_w.rating += delta_rating_min / 3.0;
+                        player_b.rating -= delta_rating_min / 3.0;
                         // player_i.rating += 1.0;
                         // player_j.rating -= 1.0;
                     }
@@ -669,8 +675,8 @@ fn play_tournament(nns: Vec<NeuralNetwork>, show_log: bool) -> Vec<NeuralNetwork
                         print!("w");
                         flush();
                     }
-                    player_i.rating += delta_rating_2 / 20.0;
-                    player_j.rating -= delta_rating_2 / 20.0;
+                    player_w.rating += delta_rating_w / 20.0;
+                    player_b.rating -= delta_rating_w / 20.0;
                     // player_i.rating += 3.0;
                     // player_j.rating -= 3.0;
                 }
@@ -680,8 +686,8 @@ fn play_tournament(nns: Vec<NeuralNetwork>, show_log: bool) -> Vec<NeuralNetwork
                         print!("b");
                         flush();
                     }
-                    player_i.rating -= delta_rating_1 / 20.0;
-                    player_j.rating += delta_rating_1 / 20.0;
+                    player_w.rating -= delta_rating_b / 20.0;
+                    player_b.rating += delta_rating_b / 20.0;
                     // player_i.rating -= 3.0;
                     // player_j.rating += 3.0;
                 }
@@ -691,15 +697,15 @@ fn play_tournament(nns: Vec<NeuralNetwork>, show_log: bool) -> Vec<NeuralNetwork
                         print!("d");
                         flush();
                     }
-                    if player_i.rating > player_j.rating {
-                        player_i.rating -= delta_rating_2 / 20.0;
-                        player_j.rating += delta_rating_2 / 20.0;
+                    if player_w.rating > player_b.rating {
+                        player_w.rating -= delta_rating_w / 20.0;
+                        player_b.rating += delta_rating_w / 20.0;
                         // player_i.rating -= 0.3;
                         // player_j.rating += 0.3;
                     }
-                    else if player_j.rating > player_i.rating {
-                        player_i.rating += delta_rating_2 / 20.0;
-                        player_j.rating -= delta_rating_2 / 20.0;
+                    else if player_b.rating > player_w.rating {
+                        player_w.rating += delta_rating_w / 20.0;
+                        player_b.rating -= delta_rating_w / 20.0;
                         // player_i.rating += 0.3;
                         // player_j.rating -= 0.3;
                     }
@@ -713,8 +719,8 @@ fn play_tournament(nns: Vec<NeuralNetwork>, show_log: bool) -> Vec<NeuralNetwork
             //     println!();
             // }
 
-            players[i].rating = player_i.rating;
-            players[j].rating = player_j.rating;
+            players[i].rating = player_w.rating;
+            players[j].rating = player_b.rating;
         }
         print!(" ");
     }
@@ -731,37 +737,33 @@ fn play_tournament(nns: Vec<NeuralNetwork>, show_log: bool) -> Vec<NeuralNetwork
         println!("\nstats: {:?}", tournament_statistics);
 
         let ratings_sorted: Vec<f32> = players_sorted.clone().iter().map(|p| p.rating).collect();
-        println!("final ratings (sorted): {:?}", ratings_sorted);
+        println!("final ratings (sorted): {ratings_sorted:?}\n");
 
+        let player_best: Player = players_sorted[0].clone();
         {
-            let player_best: Player = players_sorted[0].clone();
             let (who_won, game_moves) = play_game(player_best.nn.clone(), player_best.nn.clone(), false, true);
             println!(
-                "BEST vs SELF: winner={who_won:?}, af={:?}, moves: ' {}'",
+                "BEST vs SELF: winner={who_won:?}, af1={:?}, moves: ' {} '\n",
                 player_best.nn.get_activation_function(),
                 game_moves.unwrap(),
             );
         }
 
         {
-            let player_best_1: Player = players_sorted[0].clone();
             let player_best_2: Player = players_sorted[1].clone();
-            let (who_won, game_moves) = play_game(player_best_1.nn.clone(), player_best_2.nn.clone(), false, true);
+            let (who_won, game_moves) = play_game(player_best.nn.clone(), player_best_2.nn.clone(), false, true);
             println!(
-                "BEST vs BEST2: winner={who_won:?}, af1={:?}, af2={:?}, moves: ' {}'",
-                player_best_1.nn.get_activation_function(),
+                "BEST vs BEST2: winner={who_won:?}, af2={:?}, moves: ' {} '\n",
                 player_best_2.nn.get_activation_function(),
                 game_moves.unwrap(),
             );
         }
 
         {
-            let player_best: Player = players_sorted[0].clone();
             let player_worst: Player = players_sorted[players_sorted.len()-1].clone();
             let (who_won, game_moves) = play_game(player_best.nn.clone(), player_worst.nn.clone(), false, true);
             println!(
-                "BEST vs WORST: winner={who_won:?}, af1={:?}, af2={:?}, moves: ' {}'",
-                player_best.nn.get_activation_function(),
+                "BEST vs WORST: winner={who_won:?}, af2={:?}, moves: ' {} '\n",
                 player_worst.nn.get_activation_function(),
                 game_moves.unwrap()
             );
