@@ -243,7 +243,7 @@ impl NeuralNetwork {
         // println!("total_neurons = {}", total_neurons);
         // println!("neurons_to_evolve = {}", neurons_to_evolve);
 
-        if rng.gen_range(0..1000) < 5 {
+        if rng.gen_bool(0.1) {
             self.activation_function = get_random_activation_function();
         }
 
@@ -256,16 +256,16 @@ impl NeuralNetwork {
             // println!("total_weights = {}", total_weights);
             // println!("weights_to_evolve = {}", weights_to_evolve);
 
-            let sign: f32 = if rng.gen_range(0..=100) < 20 { -1.0 } else { 1.0 };
+            let sign: f32 = if rng.gen_bool((evolution_factor/2.0) as f64) { -1.0 } else { 1.0 };
             self.consts[l][h] *= sign;
-            if rng.gen_range(-1.0_f32..=1.0_f32) > 0.0 {
-                self.consts[l][h] *= (1.0 + evolution_factor).powi(2);
+            if rng.gen_bool(0.5) {
+                self.consts[l][h] *= (1.0 + evolution_factor).powi(3);
                 // self.consts[l][h][c] *= 1.1;
             } else {
-                self.consts[l][h] /= (1.0 + evolution_factor).powi(2);
+                self.consts[l][h] /= (1.0 + evolution_factor).powi(3);
                 // self.consts[l][h][c] /= 1.1;
             }
-            if rng.gen_range(-1.0_f32..=1.0_f32) > 0.0 {
+            if rng.gen_bool(0.5) {
                 self.consts[l][h] += evolution_factor / 10.0;
             } else {
                 self.consts[l][h] -= evolution_factor / 10.0;
@@ -274,16 +274,16 @@ impl NeuralNetwork {
             for _ in 0..weights_to_evolve {
                 // println!("old value: {}", self.weights[h]);
                 let c: usize = rng.gen_range(0..total_weights) as usize;
-                let sign: f32 = if rng.gen_range(0..=100) < 20 { -1.0 } else { 1.0 };
+                let sign: f32 = if rng.gen_bool((evolution_factor/2.0) as f64) { -1.0 } else { 1.0 };
                 self.weight[l][h][c] *= sign;
-                if rng.gen_range(-1.0_f32..=1.0_f32) > 0.0 {
-                    self.weight[l][h][c] *= (1.0 + evolution_factor).powi(2);
+                if rng.gen_bool(0.5) {
+                    self.weight[l][h][c] *= (1.0 + evolution_factor).powi(3);
                     // self.weight[l][h][c] *= 1.1;
                 } else {
-                    self.weight[l][h][c] /= (1.0 + evolution_factor).powi(2);
+                    self.weight[l][h][c] /= (1.0 + evolution_factor).powi(3);
                     // self.weight[l][h][c] /= 1.1;
                 }
-                if rng.gen_range(-1.0_f32..=1.0_f32) > 0.0 {
+                if rng.gen_bool(0.5) {
                     self.weight[l][h][c] += evolution_factor / 100.0;
                 } else {
                     self.weight[l][h][c] -= evolution_factor / 100.0;

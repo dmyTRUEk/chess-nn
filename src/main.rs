@@ -1,19 +1,20 @@
 /// Main file
 
 pub mod utils_io;
-pub mod random;
-pub mod activation_functions;
 pub mod neural_network;
+pub mod activation_functions;
 
 use std::collections::HashMap;
 
 use chess::*;
-use arrayfire::{info, set_device, device_count, device_info};
+use arrayfire::{device_count, device_info, info, set_device};
+use rand::{Rng, prelude::ThreadRng, thread_rng};
 
-use crate::utils_io::*;
-use crate::random::*;
-use crate::activation_functions::get_random_activation_function;
-use crate::neural_network::*;
+use crate::{
+    utils_io::*,
+    neural_network::*,
+    // activation_functions::get_random_activation_function,
+};
 
 
 
@@ -131,13 +132,13 @@ fn main() {
             println!("approx neurons_to_evolve = {}", approx_neurons_to_evolve);
 
             // first part is best nns so dont evolve them, but second part will be evolved
-            const SAVE_BEST_N: usize = 1 + PLAYERS_AMOUNT / 3;
+            const SAVE_BEST_N: usize = 1 + PLAYERS_AMOUNT / 4;
             for i in SAVE_BEST_N..PLAYERS_AMOUNT {
                 nns[i] = nns[i%SAVE_BEST_N].clone();
                 nns[i].evolve(evolution_factor);
             }
             let len = nns.len();
-            nns[len-2] = NeuralNetwork::with_consts(&nn_heights, 0.01, 0.0, get_random_activation_function());
+            // nns[len-2] = NeuralNetwork::with_consts(&nn_heights, 0.01, 0.0, get_random_activation_function());
             nns[len-1] = NeuralNetwork::with_smart_random(&nn_heights);
         }
 
@@ -167,7 +168,6 @@ fn fen_to_human_viewable(fen: String, beautiful_output: bool) -> String {
     // println!("{}", board);
     // res += &board.to_string();
     res += &"\n".to_string();
-
     for (_i, c) in fen.chars().enumerate() {
         if c == ' ' {
             break;
@@ -190,7 +190,6 @@ fn fen_to_human_viewable(fen: String, beautiful_output: bool) -> String {
                         /*
                         ♖♘♗♕♔♗♘♖
                         ♙♙♙♙♙♙♙♙
-
                         ♟♟♟♟♟♟♟♟
                         ♜♞♝♛♚♝♞♜
                         */
@@ -201,7 +200,6 @@ fn fen_to_human_viewable(fen: String, beautiful_output: bool) -> String {
                             'q' => '♕',
                             'k' => '♔',
                             'p' => '♙',
-
                             'R' => '♜',
                             'N' => '♞',
                             'B' => '♝',
@@ -229,66 +227,12 @@ fn fen_to_human_viewable(fen: String, beautiful_output: bool) -> String {
     return res;
 }
 
-// fn fen_to_human_viewable_with_fen(fen: String, beautiful_output: bool) -> String {
-//     fen.clone() + &fen_to_human_viewable(fen, beautiful_output)
-// }
-
-// TODO: make rid of it
 fn board_to_human_viewable(board: Board, beautiful_output: bool) -> String {
-    // board_to_string(Board::from_fen(fen).unwrap(), beautiful_output)
-    fen_to_human_viewable(board.to_string(), beautiful_output)
+    let fen: String = board.to_string();
+    fen_to_human_viewable(fen, beautiful_output)
 }
 
-// fn board_to_human_viewable_with_fen(board: Board, beautiful_output: bool) -> String {
-//     board.to_string() + &board_to_human_viewable(board, beautiful_output)
-// }
 
-
-// fn reverse_colors_on_board(board_in: Board) -> Board {
-//     let mut fen_board_out: String = "".to_string();
-
-//     let board_in_string = board_in.to_string();
-
-//     let splited = board_in_string.split(" ").collect::<Vec<&str>>();
-
-//     let mut fen_left: String = splited[0].to_string();
-//     let mut fen_right: String = splited[1..].join(" ").to_string();
-//     // println!("{}", fen_left);
-//     // println!("{}", fen_right);
-
-//     let mut fen_left_new: String = "".to_string();
-//     for c in fen_left.chars().into_iter() {
-//         if c.is_lowercase() {
-//             fen_left_new += &c.to_ascii_uppercase().to_string();
-//         }
-//         else if c.is_uppercase() {
-//             fen_left_new += &c.to_ascii_lowercase().to_string();
-//         }
-//         else {
-//             fen_left_new += &c.to_string();
-//         }
-//     }
-//     fen_left_new = fen_left_new.chars().rev().collect::<String>();
-//     // println!("{}", fen_left_new);
-//     // println!("{}", fen_right);
-
-//     fen_board_out = fen_left_new + " " + &fen_right;
-
-//     println!("{}", fen_board_out);
-//     return Board::from_fen(fen_board_out).unwrap();
-//     // return Board::from_fen(board_in.to_string()).unwrap();
-// }
-
-
-
-// enum PiecesValue {
-//     Pawn = 1.0,
-//     Knight = 2.5,
-//     Bishop = 3.0,
-//     Rook = 5.0,
-//     Queen = 7.0,
-//     King = 10.0,
-// }
 
 struct PiecesValue {
     pub pawn: f32,
@@ -308,40 +252,48 @@ const PIECES_VALUE: PiecesValue = PiecesValue {
     king:   20.0,
 };
 
-fn analyze(board: Board, nn: NeuralNetwork) -> f32 {
-    let mut array_board: Vec<f32> = vec![0.0; if !USE_65_NEURONS { 64 } else { 65 }];
+fn board_to_vec_for_nn(board: Board) -> Vec<f32> {
+    let mut input_for_nn: Vec<f32> = vec![0.0; if !USE_65_NEURONS { 64 } else { 65 }];
     let mut n: usize = 0;
-    for (_i, c) in board_to_human_viewable(board, false).to_string().chars().enumerate() {
-        // println!("i = {}, c = '{}'", i, c);
-        let value: f32 = match c {
-            'p' => -PIECES_VALUE.pawn,
-            'n' => -PIECES_VALUE.knight,
-            'b' => -PIECES_VALUE.bishop,
-            'r' => -PIECES_VALUE.rook,
-            'q' => -PIECES_VALUE.queen,
-            'k' => -PIECES_VALUE.king,
-
-            'P' => PIECES_VALUE.pawn,
-            'N' => PIECES_VALUE.knight,
-            'B' => PIECES_VALUE.bishop,
-            'R' => PIECES_VALUE.rook,
-            'Q' => PIECES_VALUE.queen,
-            'K' => PIECES_VALUE.king,
-
-            '.' => 0.0,
-            _ => {
-                continue;
-            }
-        };
-        // println!("adding symbol: '{}' -> {}", c, value);
-        array_board[n] = value;
+    for c in board.to_string().chars() {
+        match c {
+            ' ' => { break }
+            '/' => { continue }
+            '1' => { n += 0 }
+            '2' => { n += 1 }
+            '3' => { n += 2 }
+            '4' => { n += 3 }
+            '5' => { n += 4 }
+            '6' => { n += 5 }
+            '7' => { n += 6 }
+            '8' => { n += 7 }
+            'p' => { input_for_nn[n] = -PIECES_VALUE.pawn }
+            'n' => { input_for_nn[n] = -PIECES_VALUE.knight }
+            'b' => { input_for_nn[n] = -PIECES_VALUE.bishop }
+            'r' => { input_for_nn[n] = -PIECES_VALUE.rook }
+            'q' => { input_for_nn[n] = -PIECES_VALUE.queen }
+            'k' => { input_for_nn[n] = -PIECES_VALUE.king }
+            'P' => { input_for_nn[n] = PIECES_VALUE.pawn }
+            'N' => { input_for_nn[n] = PIECES_VALUE.knight }
+            'B' => { input_for_nn[n] = PIECES_VALUE.bishop }
+            'R' => { input_for_nn[n] = PIECES_VALUE.rook }
+            'Q' => { input_for_nn[n] = PIECES_VALUE.queen }
+            'K' => { input_for_nn[n] = PIECES_VALUE.king }
+            _ => { panic!() }
+        }
         n += 1;
     }
     if USE_65_NEURONS {
-        array_board[64] = random_f32(-10.0, 10.0);
+        let mut rng: ThreadRng = thread_rng();
+        input_for_nn[64] = rng.gen_range(-10.0..10.0);
     }
-    // println!("array_board = {:?}", array_board);
-    return nn.process_input(&array_board)[0];
+    input_for_nn
+}
+
+fn analyze(board: Board, nn: NeuralNetwork) -> f32 {
+    let input_for_nn: Vec<f32> = board_to_vec_for_nn(board);
+    // println!("input_for_nn = {:?}", array_board);
+    return nn.process_input(&input_for_nn)[0];
 }
 
 
