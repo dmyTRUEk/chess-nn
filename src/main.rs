@@ -2,6 +2,7 @@
 
 pub mod utils_io;
 pub mod random;
+pub mod activation_functions;
 pub mod neural_network;
 
 use std::collections::HashMap;
@@ -11,15 +12,16 @@ use arrayfire::{info, set_device, device_count, device_info};
 
 use crate::utils_io::*;
 use crate::random::*;
+use crate::activation_functions::get_random_activation_function;
 use crate::neural_network::*;
 
 
 
-const PLAYERS_AMOUNT: usize = 5;
+const PLAYERS_AMOUNT: usize = 20;
 
-const GENERATIONS: u32 = 100;
+const GENERATIONS: u32 = 1000;
 
-const ALLOW_WIN_BY_POINTS: bool = true;
+const ALLOW_WIN_BY_POINTS: bool = false;
 
 // the 65's neuron needed for choosing move a bit random
 const USE_65_NEURONS: bool = false;
@@ -37,6 +39,7 @@ pub const COMPUTING_UNIT: ComputingUnit = ComputingUnit::CPU;
 fn main() {
     // let nn_heights: Vec<usize> = vec![64, 700, 600, 500, 400, 300, 200, 100, 1];
     // let nn_heights: Vec<usize> = vec![64, 100, 100, 100, 100, 100, 100, 1];
+    let nn_heights: Vec<usize> = vec![64, 80, 60, 40, 20, 10, 1];
     // let nn_heights: Vec<usize> = vec![64, 1000, 1000, 1000, 1];
     // let nn_heights: Vec<usize> = vec![64, 200, 200, 200, 1];
     // let nn_heights: Vec<usize> = vec![64, 100, 100, 100, 1];
@@ -48,7 +51,7 @@ fn main() {
     // let nn_heights: Vec<usize> = vec![64, 1000, 1];
     // let nn_heights: Vec<usize> = vec![64, 100, 1];
     // let nn_heights: Vec<usize> = vec![64, 10, 1];
-    let nn_heights: Vec<usize> = vec![64, 1];
+    // let nn_heights: Vec<usize> = vec![64, 1];
 
     let nn_heights: Vec<usize> = {
         let mut nn_heights_new: Vec<usize> = nn_heights;
@@ -91,8 +94,11 @@ fn main() {
         }
     }
 
+    let (weight_min, weight_max): (f32, f32) = (-0.05, 0.05);
+    let (consts_min, consts_max): (f32, f32) = (-0.05, 0.05);
+
     let mut nns: Vec<NeuralNetwork> = (0..PLAYERS_AMOUNT)
-        .map(|_i| NeuralNetwork::with_random_weights(&nn_heights, -0.1, 0.5)).collect();
+        .map(|_| NeuralNetwork::with_random(&nn_heights, weight_min, weight_max, consts_min, consts_max)).collect();
         // .map(|_i| NeuralNetwork::with_const_weights(&nn_heights, 1.0)).collect();
     let mut nns_old: Vec<NeuralNetwork>;
     let mut new_best_same_counter: u32 = 0;
@@ -111,8 +117,8 @@ fn main() {
                 // ( -(gen as f32) / (gens as f32) ).exp()
                 // ( - 3.0 * (gen as f32) / (gens as f32) ).exp()
                 // 0.3 * ( -(gen as f32) / (gens as f32) ).exp()
-                // 0.9 * ( -(gen as f32) / (gens as f32) ).exp()
-                0.4 * ( - 5.0 * (gen as f32) / (gens as f32) ).exp()
+                0.999 * ( -(gen as f32) / (gens as f32) ).exp()
+                // 0.8 * ( - 5.0 * (gen as f32) / (gens as f32) ).exp()
                 // 0.1 * ( -(gen as f32) / (gens as f32) ).exp()
                 // 0.1 * ( - 3.0 * (gen as f32) / (gens as f32) ).exp()
             }
@@ -123,10 +129,14 @@ fn main() {
             println!("approx neurons_to_evolve = {}", approx_neurons_to_evolve);
 
             // first part is best nns so dont evolve them, but second part will be evolved
-            for i in 1..PLAYERS_AMOUNT {
-                nns[i] = nns[0].clone();
+            const SAVE_BEST_N: usize = 1 + PLAYERS_AMOUNT / 3;
+            for i in SAVE_BEST_N..PLAYERS_AMOUNT {
+                nns[i] = nns[i%SAVE_BEST_N].clone();
                 nns[i].evolve(evolution_factor);
             }
+            let len = nns.len();
+            nns[len-2] = NeuralNetwork::with_consts(&nn_heights, 0.01, 0.0, get_random_activation_function());
+            nns[len-1] = NeuralNetwork::with_random(&nn_heights, weight_min, weight_max, consts_min, consts_max);
         }
 
         if nns_old[0] == nns[0] && generation > 0 {
@@ -167,7 +177,7 @@ fn fen_to_human_viewable(fen: String, beautiful_output: bool) -> String {
         else {
             match c.to_string().parse::<u32>() {
                 Ok(v) => {
-                    for _j in 0..v {
+                    for _ in 0..v {
                         // print!(". ");
                         res += &". ".to_string();
                     }
@@ -288,12 +298,18 @@ struct PiecesValue {
 }
 
 const PIECES_VALUE: PiecesValue = PiecesValue {
-    pawn: 1.0,
-    knight: 2.7,
-    bishop: 3.0,
-    rook: 5.0,
-    queen: 9.0,
-    king: 100.0,
+    // pawn: 1.0,
+    // knight: 2.7,
+    // bishop: 3.0,
+    // rook: 5.0,
+    // queen: 9.0,
+    // king: 100.0,
+    pawn: 0.01,
+    knight: 0.02,
+    bishop: 0.03,
+    rook: 0.04,
+    queen: 0.05,
+    king: 0.06,
 };
 
 fn analyze(board: Board, nn: NeuralNetwork) -> f32 {
@@ -344,12 +360,6 @@ enum EnumWhoWon {
     DrawByPoints,
 }
 
-fn make_move(board: Board, chess_move: ChessMove) -> Board {
-    let mut board_res: Board = board;
-    board.make_move(chess_move, &mut board_res);
-    board_res
-}
-
 fn actions_to_string(actions: Vec<Action>) -> String {
     let mut res: String = "".to_string();
     for action in actions {
@@ -383,8 +393,8 @@ fn play_game(
     show_log: bool, 
     get_game: bool
 ) -> (EnumWhoWon, Option<String>) {
-    assert_eq!(nn_white.weight[0].len(), if !USE_65_NEURONS { 64 } else { 65 });
-    assert_eq!(nn_black.weight[0].len(), if !USE_65_NEURONS { 64 } else { 65 });
+    // assert_eq!(nn_white.weight[0].len(), if !USE_65_NEURONS { 64 } else { 65 });
+    // assert_eq!(nn_black.weight[0].len(), if !USE_65_NEURONS { 64 } else { 65 });
 
     let mut moves_amount: u32 = 0;
 
@@ -411,7 +421,7 @@ fn play_game(
         let side_to_move: Color = game.current_position().side_to_move();
 
         for move_ in possible_moves {
-            let board_possible: Board = make_move(game.current_position(), move_);
+            let board_possible: Board = game.current_position().make_move_new(move_);
 
             // println!("{}", board_to_string_with_fen(board_possible, false));
 
@@ -510,15 +520,15 @@ fn play_game(
         match game_res {
             GameResult::WhiteCheckmates | GameResult::BlackResigns => {
                 // return EnumWhoWon::White;
-                return ( EnumWhoWon::White, create_game_str_if_needed() );
+                return (EnumWhoWon::White, create_game_str_if_needed());
             }
             GameResult::WhiteResigns | GameResult::BlackCheckmates => {
                 // return EnumWhoWon::Black;
-                return ( EnumWhoWon::Black, create_game_str_if_needed() );
+                return (EnumWhoWon::Black, create_game_str_if_needed());
             }
             GameResult::Stalemate | GameResult::DrawAccepted | GameResult::DrawDeclared => {
                 // return EnumWhoWon::Draw;
-                return ( EnumWhoWon::Draw, create_game_str_if_needed() );
+                return (EnumWhoWon::Draw, create_game_str_if_needed());
             }
         }
     }
@@ -550,50 +560,36 @@ fn play_game(
         }
         if piece_sum_white > piece_sum_black {
             // return EnumWhoWon::White;
-            return ( EnumWhoWon::WhiteByPoints, create_game_str_if_needed() );
+            return (EnumWhoWon::WhiteByPoints, create_game_str_if_needed());
         }
         else if piece_sum_black > piece_sum_white {
             // return EnumWhoWon::Black;
-            return ( EnumWhoWon::BlackByPoints, create_game_str_if_needed() );
+            return (EnumWhoWon::BlackByPoints, create_game_str_if_needed());
         }
         else {
             // return EnumWhoWon::Draw;
-            return ( EnumWhoWon::DrawByPoints, create_game_str_if_needed() );
+            return (EnumWhoWon::DrawByPoints, create_game_str_if_needed());
         }
     }
 }
 
 
 
-// fn min(a: f32, b: f32) -> f32 {
-//     if a < b { a } else { b }
-// }
-// fn max(a: f32, b: f32) -> f32 {
-//     if a > b { a } else { b }
-// }
-// fn sort_asc(v: Vec<f32>) -> Vec<f32> {
-//     let mut res_v = v;
-//     res_v.sort_by(|a, b| a.partial_cmp(b).unwrap());
-//     res_v
-// }
-// fn sort_desc(v: Vec<f32>) -> Vec<f32> {
-//     let mut res_v = v;
-//     res_v.sort_by(|a, b| b.partial_cmp(a).unwrap());
-//     res_v
-// }
+fn sum_vec(vec: &Vec<usize>) -> usize {
+    let mut res: usize = 0;
+    for item in vec {
+        res += item;
+    }
+    res
+}
+
+
 
 #[derive(Clone, Debug)]
 struct Player {
     pub nn: NeuralNetwork,
     pub rating: f32,
 }
-
-// impl PartialEq for Player {
-//     fn eq(&self, other: &Self) -> bool {
-//         return false;
-//     }
-// }
-// impl Eq for Player {}
 
 fn logistic(x: f32) -> f32 {
     100.0 / ( 1.0 + 10.0_f32.powf(x/400.0) )
@@ -628,7 +624,8 @@ fn play_tournament(nns: Vec<NeuralNetwork>, show_log: bool) -> Vec<NeuralNetwork
                         flush();
                     }
                     player_i.rating += delta_rating_2;
-                    player_j.rating -= delta_rating_2;
+                    // player_j.rating -= delta_rating_2;
+                    player_j.rating += delta_rating_2 / 4.0;
                     // player_i.rating += 10.0;
                     // player_j.rating -= 10.0;
                 }
@@ -638,7 +635,8 @@ fn play_tournament(nns: Vec<NeuralNetwork>, show_log: bool) -> Vec<NeuralNetwork
                         print!("B");
                         flush();
                     }
-                    player_i.rating -= delta_rating_1;
+                    // player_i.rating -= delta_rating_1;
+                    player_i.rating += delta_rating_1 / 4.0;
                     player_j.rating += delta_rating_1;
                     // player_i.rating -= 10.0;
                     // player_j.rating += 10.0;
@@ -650,14 +648,14 @@ fn play_tournament(nns: Vec<NeuralNetwork>, show_log: bool) -> Vec<NeuralNetwork
                         flush();
                     }
                     if player_i.rating > player_j.rating {
-                        player_i.rating -= delta_rating_2 / 10.0;
-                        player_j.rating += delta_rating_2 / 10.0;
+                        player_i.rating -= delta_rating_2 / 20.0;
+                        player_j.rating += delta_rating_2 / 20.0;
                         // player_i.rating -= 1.0;
                         // player_j.rating += 1.0;
                     }
                     else if player_j.rating > player_i.rating {
-                        player_i.rating += delta_rating_2 / 10.0;
-                        player_j.rating -= delta_rating_2 / 10.0;
+                        player_i.rating += delta_rating_2 / 20.0;
+                        player_j.rating -= delta_rating_2 / 20.0;
                         // player_i.rating += 1.0;
                         // player_j.rating -= 1.0;
                     }
@@ -671,8 +669,8 @@ fn play_tournament(nns: Vec<NeuralNetwork>, show_log: bool) -> Vec<NeuralNetwork
                         print!("w");
                         flush();
                     }
-                    player_i.rating += delta_rating_2 / 5.0;
-                    player_j.rating -= delta_rating_2 / 5.0;
+                    player_i.rating += delta_rating_2 / 20.0;
+                    player_j.rating -= delta_rating_2 / 20.0;
                     // player_i.rating += 3.0;
                     // player_j.rating -= 3.0;
                 }
@@ -682,8 +680,8 @@ fn play_tournament(nns: Vec<NeuralNetwork>, show_log: bool) -> Vec<NeuralNetwork
                         print!("b");
                         flush();
                     }
-                    player_i.rating -= delta_rating_1 / 5.0;
-                    player_j.rating += delta_rating_1 / 5.0;
+                    player_i.rating -= delta_rating_1 / 20.0;
+                    player_j.rating += delta_rating_1 / 20.0;
                     // player_i.rating -= 3.0;
                     // player_j.rating += 3.0;
                 }
@@ -738,34 +736,39 @@ fn play_tournament(nns: Vec<NeuralNetwork>, show_log: bool) -> Vec<NeuralNetwork
         {
             let player_best: Player = players_sorted[0].clone();
             let (who_won, game_moves) = play_game(player_best.nn.clone(), player_best.nn.clone(), false, true);
-            println!("game_moves of best NN vs self: ' {}', winner={:?}", game_moves.unwrap(), who_won);
+            println!(
+                "BEST vs SELF: winner={who_won:?}, af={:?}, moves: ' {}'",
+                player_best.nn.get_activation_function(),
+                game_moves.unwrap(),
+            );
         }
 
         {
             let player_best_1: Player = players_sorted[0].clone();
             let player_best_2: Player = players_sorted[1].clone();
             let (who_won, game_moves) = play_game(player_best_1.nn.clone(), player_best_2.nn.clone(), false, true);
-            println!("game_moves of best NN vs best2 NN: ' {}', winner={:?}", game_moves.unwrap(), who_won);
+            println!(
+                "BEST vs BEST2: winner={who_won:?}, af1={:?}, af2={:?}, moves: ' {}'",
+                player_best_1.nn.get_activation_function(),
+                player_best_2.nn.get_activation_function(),
+                game_moves.unwrap(),
+            );
         }
 
         {
             let player_best: Player = players_sorted[0].clone();
             let player_worst: Player = players_sorted[players_sorted.len()-1].clone();
             let (who_won, game_moves) = play_game(player_best.nn.clone(), player_worst.nn.clone(), false, true);
-            println!("game_moves of best NN vs worst NN: ' {}', winner={:?}", game_moves.unwrap(), who_won);
+            println!(
+                "BEST vs WORST: winner={who_won:?}, af1={:?}, af2={:?}, moves: ' {}'",
+                player_best.nn.get_activation_function(),
+                player_worst.nn.get_activation_function(),
+                game_moves.unwrap()
+            );
         }
     }
 
     players_sorted.into_iter().map(|p| p.nn).collect()
 }
 
-
-
-fn sum_vec(vec: &Vec<usize>) -> usize {
-    let mut res: usize = 0;
-    for item in vec {
-        res += item;
-    }
-    res
-}
 
