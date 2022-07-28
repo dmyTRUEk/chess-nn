@@ -3,9 +3,9 @@
 use std::fmt;
 
 use arrayfire::{Array, Dim4, matmul, div, constant, exp};
-use rand::{Rng, thread_rng};
+use rand::{Rng, thread_rng, prelude::ThreadRng};
 
-use crate::random::*;
+use crate::{ComputingUnit, COMPUTING_UNIT};
 // use crate::activation_functions::activation_function;
 
 
@@ -77,73 +77,92 @@ impl NeuralNetwork {
 
 
     pub fn process_input(&self, input: &Vec<f32>) -> Vec<f32> {
+        assert_eq!(64, input.len());
         let layers = self.weight.len();
-        // let mut height_this: usize;
-        // let mut height_next: usize;
         
-        // set results of neurons in first layer (input for nn)
-        // for h in 0..self.neurons[0].len() {
-        //     self.neurons[0][h].value = input[h];
-        // }
+        match COMPUTING_UNIT {
+            ComputingUnit::CPU => {
+                let mut input: Vec<f32> = input.to_vec();
 
-        // this data is on gpu
-        let mut input: Array<f32> = Array::new(input, Dim4::new(&[64, 1, 1, 1]));
+                for l in 1..layers {
+                    let mut res: Vec<f32> = Vec::with_capacity(self.weight[l].len());
+                    for h in 0..self.weight[l].len() {
+                        let mut sum: f32 = 0.0;
+                        // assert_eq!(self.weight[l-1].len(), self.weight[l][h].len());
+                        for c in 0..self.weight[l][h].len() {
+                            sum += self.weight[l][h][c] * input[c]
+                        }
+                        sum = 1.0 / (1.0 + (-sum).exp());
+                        res.push(sum);
+                    }
+                    // assert_eq!(input.len(), self.weight[l-1].len());
 
-        for l in 1..layers {
-            let weights_dims: Dim4 = Dim4::new(&[self.weight[l].len() as u64, self.weight[l-1].len() as u64, 1, 1]);
-            // let dims_input  : Dim4 = Dim4::new(&[self.weight[l-1].len() as u64, 1, 1, 1]);
+                    input = res;
+                }
 
-            // let mut weights_flat: Vec<f32> = Vec::with_capacity(self.weight[l].len() * self.weight[l-1].len());
-            // for h in 0..self.weight[l].len() {
-            //     for c in 0..self.weight[l][h].len() {
-            //         weights_flat.push(self.weight[l][h][c]);
-            //     }
-            // }
-            let weights_flat: Vec<f32> = self.weight[l]
-                // .clone()
-                // .into_iter()
-                .iter()
-                .flatten()
-                .map(|&x| x)
-                .collect();
-            let weights_flat_slice: &[f32] = weights_flat.as_slice();
+                return input;
+            }
+            ComputingUnit::GPU => {
+                // this data is on gpu
+                let mut input: Array<f32> = Array::new(input, Dim4::new(&[64, 1, 1, 1]));
 
-            // this data is on gpu
-            let weights = Array::new(weights_flat_slice, weights_dims);
+                for l in 1..layers {
+                    let weights_dims: Dim4 = Dim4::new(&[self.weight[l].len() as u64, self.weight[l-1].len() as u64, 1, 1]);
+                    // let dims_input: Dim4 = Dim4::new(&[self.weight[l-1].len() as u64, 1, 1, 1]);
 
-            // assert_eq!(
-            //     input_on_gpu.dims().get()[0],
-            //     weights_on_gpu.dims().get()[1]
-            // );
+                    // let mut weights_flat: Vec<f32> = Vec::with_capacity(self.weight[l].len() * self.weight[l-1].len());
+                    // for h in 0..self.weight[l].len() {
+                    //     for c in 0..self.weight[l][h].len() {
+                    //         weights_flat.push(self.weight[l][h][c]);
+                    //     }
+                    // }
+                    let weights_flat: Vec<f32> = self.weight[l]
+                        // .clone()
+                        // .into_iter()
+                        .iter()
+                        .flatten()
+                        .map(|&x| x)
+                        .collect();
+                    let weights_flat_slice: &[f32] = weights_flat.as_slice();
 
-            // println!("{:?}", input_on_gpu.dims().get());
-            // println!("{:?}", weights_on_gpu.dims().get());
+                    // this data is on gpu
+                    let weights = Array::new(weights_flat_slice, weights_dims);
 
-            // calc result
-            input = matmul(&weights, &input, arrayfire::MatProp::NONE, arrayfire::MatProp::NONE);
+                    // assert_eq!(
+                    //     input_on_gpu.dims().get()[0],
+                    //     weights_on_gpu.dims().get()[1]
+                    // );
 
-            // apply activation function: x -> 1 / (1 + e^-x)
-            // input = constant(0.0_f32, input.dims()) - input;
-            input = -input;
-            input = exp(&input);
-            input += constant(1.0, input.dims());
-            input = div(&1.0_f32, &input, false);
+                    // println!("{:?}", input_on_gpu.dims().get());
+                    // println!("{:?}", weights_on_gpu.dims().get());
 
-            // assert_eq!(
-            //     self.weight[l].len(),
-            //     input_on_gpu.elements()
-            // );
+                    // calc result
+                    input = matmul(&weights, &input, arrayfire::MatProp::NONE, arrayfire::MatProp::NONE);
+
+                    // apply activation function: x -> 1 / (1 + e^-x)
+                    // input = constant(0.0_f32, input.dims()) - input;
+                    input = -input;
+                    input = exp(&input);
+                    input += constant(1.0, input.dims());
+                    input = div(&1.0_f32, &input, false);
+
+                    // assert_eq!(
+                    //     self.weight[l].len(),
+                    //     input_on_gpu.elements()
+                    // );
+                }
+
+                // assert_eq!(
+                //     1,
+                //     input.elements()
+                // );
+
+                let mut result: Vec<f32> = vec![0.0; self.weight.last().unwrap().len()];
+                input.host(&mut result);
+
+                return result;
+            }
         }
-
-        // assert_eq!(
-        //     1,
-        //     input.elements()
-        // );
-
-        let mut result: Vec<f32> = vec![0.0; self.weight.last().unwrap().len()];
-        input.host(&mut result);
-
-        result
     }
 
     pub fn get_total_neurons(&self) -> u32 {
@@ -156,9 +175,9 @@ impl NeuralNetwork {
         res
     }
 
-    fn choose_random_neuron(&self) -> (usize, usize) {
+    fn choose_random_neuron(&self, rng: &mut ThreadRng) -> (usize, usize) {
         let total_neurons: u32 = self.get_total_neurons();
-        let neuron_id_to_evolve: usize = random_u32(0, total_neurons-1) as usize;
+        let neuron_id_to_evolve: usize = rng.gen_range(0..total_neurons) as usize;
         let mut l: usize = 1;
         let mut h: usize = 0;
         for _j in 0..neuron_id_to_evolve {
@@ -176,29 +195,31 @@ impl NeuralNetwork {
     pub fn evolve(&mut self, evolution_factor: f32) {
         assert!(0.0 <= evolution_factor && evolution_factor <= 1.0);
 
+        let mut rng = thread_rng();
+
         let total_neurons: u32 = self.get_total_neurons();
         let neurons_to_evolve: u32 = ((total_neurons as f32) * evolution_factor) as u32;
-        let neurons_to_evolve: u32 = random_u32(1, neurons_to_evolve.max(1));
+        let neurons_to_evolve: u32 = rng.gen_range(1..=neurons_to_evolve.max(1));
         // println!("total_neurons = {}", total_neurons);
         // println!("neurons_to_evolve = {}", neurons_to_evolve);
 
         for _i in 0..neurons_to_evolve {
-            let (l, h) = self.choose_random_neuron();
+            let (l, h) = self.choose_random_neuron(&mut rng);
 
             let total_weights: u32 = self.weight[l][h].len() as u32;
             let weights_to_evolve: u32 = ((total_weights as f32) * evolution_factor) as u32;
-            let weights_to_evolve: u32 = random_u32(1, weights_to_evolve.max(1));
+            let weights_to_evolve: u32 = rng.gen_range(1..=weights_to_evolve.max(1));
             // println!("total_weights = {}", total_weights);
             // println!("weights_to_evolve = {}", weights_to_evolve);
 
             for _ in 0..weights_to_evolve {
-                let c: usize = random_u32(0, total_weights-1) as usize;
+                let c: usize = rng.gen_range(0..total_weights) as usize;
 
-                let sign: f32 = if random_f32_0_p1() < 0.01 { -1.0 } else { 1.0 };
+                let sign: f32 = if rng.gen_range(0.0_f32..=1.0_f32) < 0.01_f32 { -1.0 } else { 1.0 };
 
                 // println!("old value: {}", self.weights[h]);
                 self.weight[l][h][c] *= sign *
-                    if random_f32_m1_p1() > 0.0 {
+                    if rng.gen_range(-1.0_f32..=1.0_f32) > 0.0 {
                         1.0 * (1.0 + evolution_factor)
                         // 1.0 * (1.1)
                     } else {

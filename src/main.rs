@@ -3,8 +3,6 @@
 pub mod utils_io;
 pub mod random;
 pub mod neural_network;
-// pub mod neural_network_gpu;
-pub mod activation_functions;
 
 use std::collections::HashMap;
 
@@ -14,16 +12,6 @@ use arrayfire::{info, set_device, device_count, device_info};
 use crate::utils_io::*;
 use crate::random::*;
 use crate::neural_network::*;
-// use crate::neural_network_gpu::*;
-
-
-
-// #[warn(non_camel_case_types)]
-// type myfloat = f32;
-
-
-
-// const FEN_INIT_POSITION: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
 
 
@@ -38,8 +26,12 @@ const USE_65_NEURONS: bool = false;
 
 const MOVES_LIMIT: u32 = 200;
 
+pub enum ComputingUnit {
+    CPU,
+    GPU,
+}
+pub const COMPUTING_UNIT: ComputingUnit = ComputingUnit::CPU;
 
-// const NN_HEIGHTS: [usize; 5] = [64, 100, 100, 100, 1];
 
 
 fn main() {
@@ -51,12 +43,12 @@ fn main() {
     // let nn_heights: Vec<usize> = vec![64, 60, 40, 20, 1];
     // let nn_heights: Vec<usize> = vec![64, 20, 20, 20, 1];
     // let nn_heights: Vec<usize> = vec![64, 200, 200, 1];
-    let nn_heights: Vec<usize> = vec![64, 100, 100, 1];
+    // let nn_heights: Vec<usize> = vec![64, 100, 100, 1];
     // let nn_heights: Vec<usize> = vec![64, 10, 10, 1];
     // let nn_heights: Vec<usize> = vec![64, 1000, 1];
     // let nn_heights: Vec<usize> = vec![64, 100, 1];
     // let nn_heights: Vec<usize> = vec![64, 10, 1];
-    // let nn_heights: Vec<usize> = vec![64, 1];
+    let nn_heights: Vec<usize> = vec![64, 1];
 
     let nn_heights: Vec<usize> = {
         let mut nn_heights_new: Vec<usize> = nn_heights;
@@ -86,10 +78,18 @@ fn main() {
         PLAYERS_AMOUNT
     );
 
-    println!("devices avalaible: {}", device_count());
-    set_device(0);
-    println!("{:?}", device_info());
-    info();
+    match COMPUTING_UNIT {
+        ComputingUnit::CPU => {
+            println!("using computing unit: CPU");
+        }
+        ComputingUnit::GPU => {
+            println!("using computing unit: GPU");
+            println!("devices avalaible: {}", device_count());
+            set_device(0);
+            println!("{:?}", device_info());
+            info();
+        }
+    }
 
     let mut nns: Vec<NeuralNetwork> = (0..PLAYERS_AMOUNT)
         .map(|_i| NeuralNetwork::with_random_weights(&nn_heights, -0.1, 0.5)).collect();
