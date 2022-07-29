@@ -38,14 +38,13 @@ pub const COMPUTING_UNIT: ComputingUnit = ComputingUnit::CPU;
 
 
 fn main() {
-    let nn_heights: Vec<usize> = vec![64, 60, 40, 20, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1];
     // let nn_heights: Vec<usize> = vec![64, 700, 600, 500, 400, 300, 200, 100, 1];
     // let nn_heights: Vec<usize> = vec![64, 100, 100, 100, 100, 100, 100, 1];
     // let nn_heights: Vec<usize> = vec![64, 60, 40, 20, 10, 1];
     // let nn_heights: Vec<usize> = vec![64, 1000, 1000, 1000, 1];
     // let nn_heights: Vec<usize> = vec![64, 200, 200, 200, 1];
     // let nn_heights: Vec<usize> = vec![64, 100, 100, 100, 1];
-    // let nn_heights: Vec<usize> = vec![64, 60, 40, 20, 1];
+    let nn_heights: Vec<usize> = vec![64, 60, 40, 20, 1];
     // let nn_heights: Vec<usize> = vec![64, 20, 20, 20, 1];
     // let nn_heights: Vec<usize> = vec![64, 200, 200, 1];
     // let nn_heights: Vec<usize> = vec![64, 100, 100, 1];
@@ -96,18 +95,18 @@ fn main() {
         }
     }
 
-    // let (weight_min, weight_max): (f32, f32) = (-0.05, 0.05);
-    // let (consts_min, consts_max): (f32, f32) = (-0.05, 0.05);
+    let (weight_min, weight_max): (f32, f32) = (-0.5, 0.5);
+    let (consts_min, consts_max): (f32, f32) = (-0.5, 0.5);
 
     let mut nns: Vec<NeuralNetwork> = (0..PLAYERS_AMOUNT)
-        // .map(|_| NeuralNetwork::with_random(&nn_heights, weight_min, weight_max, consts_min, consts_max)).collect();
-        .map(|_| NeuralNetwork::with_smart_random(&nn_heights)).collect();
+        .map(|_| NeuralNetwork::with_random(&nn_heights, weight_min, weight_max, consts_min, consts_max)).collect();
+        // .map(|_| NeuralNetwork::with_smart_random(&nn_heights)).collect();
         // .map(|_i| NeuralNetwork::with_const_weights(&nn_heights, 1.0)).collect();
     let mut nns_old: Vec<NeuralNetwork>;
     let mut new_best_same_counter: u32 = 0;
 
     for generation in 0..=GENERATIONS {
-        println!("generation: {} / {}", generation, GENERATIONS);
+        println!("generation: {generation} / {GENERATIONS}");
 
         nns_old = nns.clone();
 
@@ -129,7 +128,7 @@ fn main() {
             println!("evolving with evolution_factor = {}%", 100.0*evolution_factor);
 
             let approx_neurons_to_evolve: f32 = evolution_factor*((sum_vec(&nn_heights)-nn_heights[0]) as f32);
-            println!("approx neurons_to_evolve = {}", approx_neurons_to_evolve);
+            println!("approx neurons_to_evolve = {approx_neurons_to_evolve}");
 
             // first part is best nns so dont evolve them, but second part will be evolved
             const SAVE_BEST_N: usize = 1 + PLAYERS_AMOUNT / 4;
@@ -139,12 +138,13 @@ fn main() {
             }
             let len = nns.len();
             // nns[len-2] = NeuralNetwork::with_consts(&nn_heights, 0.01, 0.0, get_random_activation_function());
-            nns[len-1] = NeuralNetwork::with_smart_random(&nn_heights);
+            // nns[len-1] = NeuralNetwork::with_smart_random(&nn_heights);
+            nns[len-1] = NeuralNetwork::with_random(&nn_heights, weight_min, weight_max, consts_min, consts_max);
         }
 
         if nns_old[0] == nns[0] && generation > 0 {
             new_best_same_counter += 1;
-            println!("CAUTION: NEW BEST IS SAME {} TIMES!!!", new_best_same_counter);
+            println!("WARNING: new best is same {new_best_same_counter} times!!!");
         }
         else {
             new_best_same_counter = 0;
@@ -165,7 +165,7 @@ fn main() {
 
 fn fen_to_human_viewable(fen: String, beautiful_output: bool) -> String {
     let mut res: String = "".to_string();
-    // println!("{}", board);
+    // println!("{board}");
     // res += &board.to_string();
     res += &"\n".to_string();
     for (_i, c) in fen.chars().enumerate() {
@@ -210,11 +210,11 @@ fn fen_to_human_viewable(fen: String, beautiful_output: bool) -> String {
                                 panic!();
                             }
                         };
-                        // print!("{}", beautiful_c);
+                        // print!("{beautiful_c}");
                         res += &beautiful_c.to_string();
                     }
                     else {
-                        // print!("{}", c);
+                        // print!("{c}");
                         res += &c.to_string();
                     }
                 }
@@ -407,6 +407,7 @@ fn play_game(
                         Color::Black => { -1.0 }
                     };
                     if sign * (mwm_possible.mark - mwm_best.mark) > 0.0 {
+                    // if (mwm_possible.mark - mwm_best.mark) > 0.0 {
                         omwm_best = Some(mwm_possible);
                     }
                 }
@@ -444,7 +445,7 @@ fn play_game(
         }
 
         if show_log {
-            println!("move_n = {}", moves_amount);
+            println!("moves_amount = {moves_amount}");
             println!("{}", board_to_human_viewable(game.current_position(), true));
             // println!("{}", game.current_position());
             // println!("{:?}", game);

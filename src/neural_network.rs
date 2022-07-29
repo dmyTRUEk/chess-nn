@@ -139,7 +139,9 @@ impl NeuralNetwork {
                     sum += self.weight[l][h][c] * input[c];
                 }
                 sum += self.consts[l][h];
-                sum = calc_activation_function(sum, self.activation_function);
+                if l != layers - 1 {
+                    sum = calc_activation_function(sum, self.activation_function);
+                }
                 // sum = 1.0 / (1.0 + (-sum).exp());
                 // sum = if sum >= 0.0 { 1.0 } else { 0.0 };
                 // sum = if sum >= 0.0 { sum } else { 0.0 };
