@@ -23,7 +23,7 @@ pub fn calc_activation_function(x: f32, activation_function: ActivationFunction)
             x
         }
         ActivationFunction::Sigmoid => {
-            1.0 / (1.0 + (-x).exp())
+            1.0 / (1.0 + (-x/10.0).exp())
         }
         ActivationFunction::SignSqrtAbs => {
             x.signum() * x.abs().sqrt()
