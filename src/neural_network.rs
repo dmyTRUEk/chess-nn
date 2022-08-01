@@ -2,14 +2,14 @@
 
 use std::fmt;
 
-use arrayfire::{Array, Dim4, matmul, div, constant, exp};
+use arrayfire::{Array, Dim4, matmul, div, constant, exp, sign, abs, sqrt, log};
 use rand::{Rng, thread_rng, prelude::ThreadRng};
 
 use crate::{
     activation_functions::*,
     ComputingUnit,
     COMPUTING_UNIT,
-    // USE_65_NEURONS,
+    NEURONS_IN_FIRST_LAYER,
 };
 
 
@@ -95,6 +95,7 @@ impl NeuralNetwork {
         nn
     }
 
+    #[deprecated]
     pub fn with_smart_random(heights: &Vec<usize>) -> Self {
         let mut rng = thread_rng();
         let mut nn = NeuralNetwork::new(heights);
@@ -153,49 +154,60 @@ impl NeuralNetwork {
         return input;
     }
 
-
+ 
     fn process_input_gpu(&self, input: &Vec<f32>) -> Vec<f32> {
         let layers = self.weight.len();
         // this data is on gpu
-        let mut input: Array<f32> = Array::new(input, Dim4::new(&[64, 1, 1, 1]));
+        let mut input: Array<f32> = Array::new(input, Dim4::new(&[NEURONS_IN_FIRST_LAYER as u64, 1, 1, 1]));
         for l in 1..layers {
             let weights_dims: Dim4 = Dim4::new(&[self.weight[l].len() as u64, self.weight[l-1].len() as u64, 1, 1]);
-            // let dims_input: Dim4 = Dim4::new(&[self.weight[l-1].len() as u64, 1, 1, 1]);
-            // let mut weights_flat: Vec<f32> = Vec::with_capacity(self.weight[l].len() * self.weight[l-1].len());
-            // for h in 0..self.weight[l].len() {
-            //     for c in 0..self.weight[l][h].len() {
-            //         weights_flat.push(self.weight[l][h][c]);
-            //     }
-            // }
             let weights_flat: Vec<f32> = self.weight[l]
-                // .clone()
-                // .into_iter()
                 .iter()
                 .flatten()
                 .map(|&x| x)
                 .collect();
             let weights_flat_slice: &[f32] = weights_flat.as_slice();
             // this data is on gpu
-            let weights = Array::new(weights_flat_slice, weights_dims);
+            let weights: Array<f32>/* 2D */ = Array::new(weights_flat_slice, weights_dims);
             // assert_eq!(
-            //     input_on_gpu.dims().get()[0],
-            //     weights_on_gpu.dims().get()[1]
+            //     input.dims().get()[0],
+            //     weights.dims().get()[1]
             // );
-            // println!("{:?}", input_on_gpu.dims().get());
-            // println!("{:?}", weights_on_gpu.dims().get());
+            // println!("{:?}", input.dims().get());
+            // println!("{:?}", weights.dims().get());
+            // prepare consts on gpu:
+            let consts_dims: Dim4 = Dim4::new(&[self.weight[l].len() as u64, 1, 1, 1]);
+            let consts_slice: &[f32] = self.consts[l].as_slice();
+            let consts: Array<f32> = Array::new(consts_slice, consts_dims);
             // calc result
             input = matmul(&weights, &input, arrayfire::MatProp::NONE, arrayfire::MatProp::NONE);
-            todo!("use consts and correct activation func");
+            input += consts;
+            // todo!("use consts and correct activation func");
             //input += consts;
             // apply activation function: x -> 1 / (1 + e^-x)
             // input = constant(0.0_f32, input.dims()) - input;
-            input = -input;
-            input = exp(&input);
-            input += constant(1.0, input.dims());
-            input = div(&1.0_f32, &input, false);
+            match self.activation_function {
+                ActivationFunction::Sigmoid => {
+                    input = -input;
+                    input /= constant(10.0_f32, input.dims());
+                    input = exp(&input);
+                    input += constant(1.0_f32, input.dims());
+                    input = div(&1.0_f32, &input, false);
+                    //input = div(&1.0_f32, &(constant(1.0_f32, input.dims()) + exp(&(-input/constant(10.0_f32, &input.dims())))), false);
+                }
+                ActivationFunction::SignSqrtAbs => {
+                    input = sign(&input) * sqrt(&abs(&input));
+                }
+                ActivationFunction::SignLnAbs => {
+                    input = sign(&input) * log(&abs(&input));
+                }
+                // ActivationFunction::Linear => {
+                //     // input = input;
+                // }
+            }
             // assert_eq!(
             //     self.weight[l].len(),
-            //     input_on_gpu.elements()
+            //     input.elements()
             // );
         }
         // assert_eq!(

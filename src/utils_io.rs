@@ -21,3 +21,11 @@ pub fn flush() {
     std::io::stdout().flush().unwrap();
 }
 
+
+
+pub fn read_line() -> String {
+    let mut line: String = String::new();
+    std::io::stdin().read_line(&mut line).unwrap();
+    line
+}
+

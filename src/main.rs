@@ -4,7 +4,7 @@ pub mod utils_io;
 pub mod neural_network;
 pub mod activation_functions;
 
-use std::collections::HashMap;
+use std::{collections::HashMap, str::FromStr};
 
 use chess::*;
 use arrayfire::{device_count, device_info, info, set_device};
@@ -18,14 +18,16 @@ use crate::{
 
 
 
-const PLAYERS_AMOUNT: usize = 20;
+const PLAYERS_AMOUNT: usize = 60;
 
-const GENERATIONS: u32 = 1000;
+const GENERATIONS: u32 = 100;
+const GEN_TO_START_WATCHING: u32 = 300;
 
-const ALLOW_WIN_BY_POINTS: bool = false;
+const ALLOW_WIN_BY_POINTS: bool = true;
 
 // additional neuron for choosing move a bit random
 const USE_NOISE: bool = false;
+const NEURONS_IN_FIRST_LAYER: usize = if !USE_NOISE { 64 } else { 65 };
 
 const MOVES_LIMIT: u32 = 200;
 
@@ -34,6 +36,7 @@ pub enum ComputingUnit {
     GPU,
 }
 pub const COMPUTING_UNIT: ComputingUnit = ComputingUnit::CPU;
+// pub const COMPUTING_UNIT: ComputingUnit = ComputingUnit::GPU;
 
 
 
@@ -41,11 +44,14 @@ fn main() {
     // let nn_heights: Vec<usize> = vec![64, 700, 600, 500, 400, 300, 200, 100, 1];
     // let nn_heights: Vec<usize> = vec![64, 100, 100, 100, 100, 100, 100, 1];
     // let nn_heights: Vec<usize> = vec![64, 60, 40, 20, 10, 1];
+    // let nn_heights: Vec<usize> = vec![64, 10000, 10000, 10000, 1];
     // let nn_heights: Vec<usize> = vec![64, 1000, 1000, 1000, 1];
     // let nn_heights: Vec<usize> = vec![64, 200, 200, 200, 1];
     // let nn_heights: Vec<usize> = vec![64, 100, 100, 100, 1];
-    let nn_heights: Vec<usize> = vec![64, 60, 40, 20, 1];
+    // let nn_heights: Vec<usize> = vec![64, 150, 70, 20, 1];
+    // let nn_heights: Vec<usize> = vec![64, 60, 40, 20, 1];
     // let nn_heights: Vec<usize> = vec![64, 20, 20, 20, 1];
+    let nn_heights: Vec<usize> = vec![64, 20, 15, 10, 1];
     // let nn_heights: Vec<usize> = vec![64, 200, 200, 1];
     // let nn_heights: Vec<usize> = vec![64, 100, 100, 1];
     // let nn_heights: Vec<usize> = vec![64, 10, 10, 1];
@@ -68,7 +74,7 @@ fn main() {
     );
     assert_eq!(
         nn_heights[0],
-        if !USE_NOISE { 64 } else { 65 },
+        NEURONS_IN_FIRST_LAYER,
         "nn_heights[0]={}, should be == 64or65, else its impossible", nn_heights[0]
     );
     assert_eq!(
@@ -95,13 +101,16 @@ fn main() {
         }
     }
 
-    let (weight_min, weight_max): (f32, f32) = (-0.5, 0.5);
-    let (consts_min, consts_max): (f32, f32) = (-0.5, 0.5);
+    let (weight_min, weight_max): (f32, f32) = (-5.0, 5.0);
+    let (consts_min, consts_max): (f32, f32) = (-5.0, 5.0);
 
     let mut nns: Vec<NeuralNetwork> = (0..PLAYERS_AMOUNT)
-        .map(|_| NeuralNetwork::with_random(&nn_heights, weight_min, weight_max, consts_min, consts_max)).collect();
-        // .map(|_| NeuralNetwork::with_smart_random(&nn_heights)).collect();
-        // .map(|_i| NeuralNetwork::with_const_weights(&nn_heights, 1.0)).collect();
+        .map( |_i|
+            NeuralNetwork::with_random(&nn_heights, weight_min, weight_max, consts_min, consts_max)
+            // NeuralNetwork::with_consts(&nn_heights, 1.0, 1.0, activation_functions::ActivationFunction::Sigmoid))
+            // NeuralNetwork::with_smart_random(&nn_heights))
+        )
+        .collect();
     let mut nns_old: Vec<NeuralNetwork>;
     let mut new_best_same_counter: u32 = 0;
 
@@ -110,7 +119,7 @@ fn main() {
 
         nns_old = nns.clone();
 
-        nns = play_tournament(nns, true);
+        nns = play_tournament(nns, generation);
 
         if generation < GENERATIONS {
             fn generation_to_evolve_factor(gen: u32, gens: u32) -> f32 {
@@ -157,11 +166,41 @@ fn main() {
     println!("evolution finished successfuly!");
 
     // println!("best_nn = {}\n\n", nns[0]);
+
+    loop {
+        print_and_flush("Choose side to play (w/b): ");
+        let line: String = read_line();
+        let side_to_play: Color = match line.chars().nth(0).unwrap() {
+            'w' => { Color::White }
+            'b' => { Color::Black }
+            // 'q' => { break; }
+            _ => { continue; }
+        };
+        let (who_won, game_moves): (EnumWhoWon, Option<String>) = play_game(
+            &nns[0],
+            &nns[0],
+            PlayGameConfig {
+                get_game: true,
+                show_log: true,
+                wait_for_enter_after_every_move: false,
+                human_color: Some(side_to_play),
+            }
+        );
+        println!(
+            "{who_vs_who}: winner={who_won:?}, af={af:?}, moves: ' {moves} '\n",
+            who_vs_who = match side_to_play {
+                Color::White => { "HUMAN vs NN_BEST" }
+                Color::Black => { "NN_BEST vs HUMAN" }
+            },
+            af = nns[0].get_activation_function(),
+            moves = game_moves.unwrap_or(MOVES_NOT_PROVIDED.to_string()),
+        );
+    }
 }
 
 
 
-
+const MOVES_NOT_PROVIDED: &str = "moves not provided";
 
 fn fen_to_human_viewable(fen: String, beautiful_output: bool) -> String {
     let mut res: String = "".to_string();
@@ -226,6 +265,28 @@ fn board_to_human_viewable(board: Board, beautiful_output: bool) -> String {
 
 
 
+// enum PiecesValue {
+//     Pawn,
+//     Knight,
+//     Bishop,
+//     Rook,
+//     Queen,
+//     King,
+// }
+// impl PiecesValue {
+//     #[inline(always)]
+//     fn value(&self) -> f32 {
+//         match self {
+//             PiecesValue::Pawn   => { 1.0 }
+//             PiecesValue::Knight => { 2.5 }
+//             PiecesValue::Bishop => { 3.0 }
+//             PiecesValue::Rook   => { 5.0 }
+//             PiecesValue::Queen  => { 7.0 }
+//             PiecesValue::King   => { 20.0 }
+//         }
+//     }
+// }
+
 struct PiecesValue {
     pub pawn: f32,
     pub knight: f32,
@@ -234,7 +295,6 @@ struct PiecesValue {
     pub queen: f32,
     pub king: f32,
 }
-
 const PIECES_VALUE: PiecesValue = PiecesValue {
     pawn:   1.0,
     knight: 2.7,
@@ -245,7 +305,7 @@ const PIECES_VALUE: PiecesValue = PiecesValue {
 };
 
 fn board_to_vec_for_nn(board: &Board) -> Vec<f32> {
-    let mut input_for_nn: Vec<f32> = vec![0.0; if !USE_NOISE { 64 } else { 65 }];
+    let mut input_for_nn: Vec<f32> = vec![0.0; NEURONS_IN_FIRST_LAYER];
     let mut n: usize = 0;
     for c in board.to_string().chars() {
         match c {
@@ -271,6 +331,20 @@ fn board_to_vec_for_nn(board: &Board) -> Vec<f32> {
             'R' => { input_for_nn[n] = PIECES_VALUE.rook }
             'Q' => { input_for_nn[n] = PIECES_VALUE.queen }
             'K' => { input_for_nn[n] = PIECES_VALUE.king }
+
+            // 'p' => { input_for_nn[n] = -PiecesValue::Pawn.value() }
+            // 'n' => { input_for_nn[n] = -PiecesValue::Knight.value() }
+            // 'b' => { input_for_nn[n] = -PiecesValue::Bishop.value() }
+            // 'r' => { input_for_nn[n] = -PiecesValue::Rook.value() }
+            // 'q' => { input_for_nn[n] = -PiecesValue::Queen.value() }
+            // 'k' => { input_for_nn[n] = -PiecesValue::King.value() }
+            // 'P' => { input_for_nn[n] = PiecesValue::Pawn.value() }
+            // 'N' => { input_for_nn[n] = PiecesValue::Knight.value() }
+            // 'B' => { input_for_nn[n] = PiecesValue::Bishop.value() }
+            // 'R' => { input_for_nn[n] = PiecesValue::Rook.value() }
+            // 'Q' => { input_for_nn[n] = PiecesValue::Queen.value() }
+            // 'K' => { input_for_nn[n] = PiecesValue::King.value() }
+
             _ => { panic!() }
         }
         n += 1;
@@ -338,14 +412,46 @@ fn actions_to_string(actions: Vec<Action>) -> String {
 
 
 
+fn string_to_chess_move(line: String) -> Option<ChessMove> {
+    let line: String = line[..line.len()-1].to_string();
+    if line.len() < 4 || line.len() > 5 { return None; }
+    let line: Vec<char> = line.chars().collect();
+    Some(ChessMove::new(
+        Square::make_square(
+            if let Ok(rank) = Rank::from_str(&line[1].to_string()) { rank } else { return None; },
+            if let Ok(file) = File::from_str(&line[0].to_string()) { file } else { return None; }
+        ),
+        Square::make_square(
+            if let Ok(rank) = Rank::from_str(&line[3].to_string()) { rank } else { return None; },
+            if let Ok(file) = File::from_str(&line[2].to_string()) { file } else { return None; }
+        ),
+        if line.len() == 4 { None } else {
+            Some(match line[4] {
+                'q' => { Piece::Queen }
+                'r' => { Piece::Rook }
+                'b' => { Piece::Bishop }
+                'n' => { Piece::Knight }
+                _ => { return None; }
+            })
+        }
+    ))
+}
+
+
+struct PlayGameConfig {
+    pub get_game: bool,
+    pub show_log: bool,
+    pub wait_for_enter_after_every_move: bool,
+    pub human_color: Option<Color>,
+}
+
 fn play_game(
     nn_white: &NeuralNetwork,
     nn_black: &NeuralNetwork,
-    show_log: bool,
-    get_game: bool
+    config: PlayGameConfig,
 ) -> (EnumWhoWon, Option<String>) {
-    // assert_eq!(nn_white.weight[0].len(), if !USE_NOISE { 64 } else { 65 });
-    // assert_eq!(nn_black.weight[0].len(), if !USE_NOISE { 64 } else { 65 });
+    // assert_eq!(nn_white.weight[0].len(), NEURONS_IN_FIRST_LAYER);
+    // assert_eq!(nn_black.weight[0].len(), NEURONS_IN_FIRST_LAYER);
 
     let mut moves_amount: u32 = 0;
 
@@ -353,11 +459,11 @@ fn play_game(
     // let mut game = Game::new_with_board(Board::from_fen(FEN_INIT_POSITION.to_string()).unwrap());
     let mut game = Game::new();
 
-    // println!("{}", board_to_string_with_fen(board_now, true));
-    if show_log {
-        println!("{}", game.current_position());
-    }
+    // if config.show_log {
+    //     println!("{}", game.current_position());
+    // }
 
+    #[derive(Debug, Copy, Clone)]
     struct MoveWithMark {
         pub chess_move: ChessMove,
         pub mark: f32,
@@ -368,8 +474,26 @@ fn play_game(
 
         let possible_moves = MoveGen::new_legal(&game.current_position());
         let mut omwm_best: Option<MoveWithMark> = None;
+        let mut mwms: Vec<MoveWithMark> = vec![];
 
         let side_to_move: Color = game.current_position().side_to_move();
+
+        // if vs human
+        // this if is nested, because at moment of writing this code it was unstable
+        if let Some(human_color) = config.human_color { if human_color == side_to_move {
+            let mut move_: Option<ChessMove> = None;
+            while move_.is_none() {
+                print_and_flush("Your move: ");
+                let line: String = read_line();
+                move_ = string_to_chess_move(line);
+                if move_.is_some() && game.current_position().legal(move_.unwrap()) {
+                    break;
+                }
+                println!("That move is illegal.");
+            }
+            game.make_move(move_.unwrap());
+            continue;
+        }}
 
         for move_ in possible_moves {
             let board_possible: Board = game.current_position().make_move_new(move_);
@@ -386,8 +510,9 @@ fn play_game(
                 }
             );
             let mwm_possible = MoveWithMark{chess_move: move_, mark: mark_possible};
-            if show_log {
-                println!("{} -> {}", mwm_possible.chess_move, mwm_possible.mark);
+            if config.show_log {
+                // println!("{} -> {}", mwm_possible.chess_move, mwm_possible.mark);
+                mwms.push(mwm_possible);
             }
 
             match omwm_best {
@@ -414,7 +539,7 @@ fn play_game(
                 // board_now = make_move(board_now, mwm_best.chess_move);
                 // println!("{}", game.current_position());
 
-                if show_log {
+                if config.show_log {
                     println!("making move: {}", mwm_best.chess_move);
                 }
                 game.make_move(mwm_best.chess_move);
@@ -422,7 +547,7 @@ fn play_game(
                 // println!("{}", game.current_position());
             }
             None => {
-                if show_log {
+                if config.show_log {
                     println!("game have ended, because no move can be made, i suppose");
                 }
                 break;
@@ -431,7 +556,7 @@ fn play_game(
 
         if game.can_declare_draw() {
             if ALLOW_WIN_BY_POINTS {
-                moves_amount = 2*MOVES_LIMIT;
+                // moves_amount = 2*MOVES_LIMIT;
                 break;
             }
             else {
@@ -439,27 +564,33 @@ fn play_game(
             }
         }
 
-        if show_log {
+        if config.show_log {
+            mwms.sort_by(|mwm1, mwm2| mwm1.mark.partial_cmp(&mwm2.mark).unwrap());
+            for mwm in mwms {
+                println!("{move_} -> {mark:.2}", move_=mwm.chess_move.to_string(), mark=mwm.mark);
+            }
             println!("moves_amount = {moves_amount}");
             println!("{}", board_to_human_viewable(game.current_position(), true));
             // println!("{}", game.current_position());
             // println!("{:?}", game);
-            // wait_for_enter();
+            if config.wait_for_enter_after_every_move {
+                wait_for_enter();
+            }
         }
 
     }
 
     let create_game_str_if_needed = || {
-        if get_game {
+        if config.get_game {
             Some(actions_to_string(game.actions().to_vec()))
         } else {
             None
         }
     };
 
-    if moves_amount < 2*MOVES_LIMIT {   // true victory/lose:
+    if moves_amount < 2*MOVES_LIMIT && !ALLOW_WIN_BY_POINTS {   // true victory/lose:
         let game_res: GameResult = game.result().unwrap();
-        if show_log {
+        if config.show_log {
             println!("game result: {:?}", game_res);
         }
         match game_res {
@@ -478,27 +609,39 @@ fn play_game(
         }
     }
     else {   // by points
-        if show_log {
-            println!("game result: {}+ moves", 2*MOVES_LIMIT);
+        if config.show_log {
+            println!("game result: true draw or {}+ moves", 2*MOVES_LIMIT);
             println!("so winner will be calculated by pieces");
         }
         let mut piece_sum_white: f32 = 0.0;
         let mut piece_sum_black: f32 = 0.0;
         for (_i, c) in board_to_human_viewable(game.current_position(), false).to_string().chars().enumerate() {
             match c {
-                'p' => piece_sum_black += PIECES_VALUE.pawn,
-                'n' => piece_sum_black += PIECES_VALUE.knight,
-                'b' => piece_sum_black += PIECES_VALUE.bishop,
-                'r' => piece_sum_black += PIECES_VALUE.rook,
-                'q' => piece_sum_black += PIECES_VALUE.queen,
-                // 'k' => piece_sum_black += PIECES_VALUE.king,
+                'p' => { piece_sum_black += PIECES_VALUE.pawn }
+                'n' => { piece_sum_black += PIECES_VALUE.knight }
+                'b' => { piece_sum_black += PIECES_VALUE.bishop }
+                'r' => { piece_sum_black += PIECES_VALUE.rook }
+                'q' => { piece_sum_black += PIECES_VALUE.queen }
+                // 'k' => { piece_sum_black += PIECES_VALUE.king }
+                'P' => { piece_sum_white += PIECES_VALUE.pawn }
+                'N' => { piece_sum_white += PIECES_VALUE.knight }
+                'B' => { piece_sum_white += PIECES_VALUE.bishop }
+                'R' => { piece_sum_white += PIECES_VALUE.rook }
+                'Q' => { piece_sum_white += PIECES_VALUE.queen }
+                // 'K' => { piece_sum_white += PIECES_VALUE.king }
 
-                'P' => piece_sum_white += PIECES_VALUE.pawn,
-                'N' => piece_sum_white += PIECES_VALUE.knight,
-                'B' => piece_sum_white += PIECES_VALUE.bishop,
-                'R' => piece_sum_white += PIECES_VALUE.rook,
-                'Q' => piece_sum_white += PIECES_VALUE.queen,
-                // 'K' => piece_sum_white += PIECES_VALUE.king,
+                // 'p' => { piece_sum_black += PiecesValue::Pawn.value() }
+                // 'n' => { piece_sum_black += PiecesValue::Knight.value() }
+                // 'b' => { piece_sum_black += PiecesValue::Bishop.value() }
+                // 'r' => { piece_sum_black += PiecesValue::Rook.value() }
+                // 'q' => { piece_sum_black += PiecesValue::Queen.value() }
+                // // 'k' => { piece_sum_black += PiecesValue::King.value() }
+                // 'P' => { piece_sum_white += PiecesValue::Pawn.value() }
+                // 'N' => { piece_sum_white += PiecesValue::Knight.value() }
+                // 'B' => { piece_sum_white += PiecesValue::Bishop.value() }
+                // 'R' => { piece_sum_white += PiecesValue::Rook.value() }
+                // 'Q' => { piece_sum_white += PiecesValue::Queen.value() }
+                // // 'K' => { piece_sum_white += PiecesValue::King.value() }
 
                 _ => { continue; }
             }
@@ -540,12 +683,13 @@ fn logistic(x: f32) -> f32 {
     100.0 / ( 1.0 + 10.0_f32.powf(x/400.0) )
 }
 
-fn play_tournament(nns: Vec<NeuralNetwork>, show_log: bool) -> Vec<NeuralNetwork> {
+fn play_tournament(nns: Vec<NeuralNetwork>, gen: u32) -> Vec<NeuralNetwork> {
     const DEFAULT_RATING: f32 = 1000.0;
     let mut players: Vec<Player> = nns.into_iter().map(|nn| Player{nn, rating: DEFAULT_RATING}).collect();
 
     let mut tournament_statistics: HashMap<EnumWhoWon, u32> = HashMap::new();
 
+    let show_log: bool = true;
     for i in 0..PLAYERS_AMOUNT {
         for j in 0..PLAYERS_AMOUNT {
             if i == j { continue; }
@@ -556,8 +700,12 @@ fn play_tournament(nns: Vec<NeuralNetwork>, show_log: bool) -> Vec<NeuralNetwork
             let game_res: (EnumWhoWon, Option<String>) = play_game(
                 &players[i].nn,
                 &players[j].nn,
-                false,
-                false
+                PlayGameConfig {
+                    get_game: false,
+                    show_log: false,
+                    wait_for_enter_after_every_move: false,
+                    human_color: None,
+                }
             );
             let game_res_who_won: EnumWhoWon = game_res.0;
 
@@ -572,33 +720,23 @@ fn play_tournament(nns: Vec<NeuralNetwork>, show_log: bool) -> Vec<NeuralNetwork
             match game_res_who_won {
                 EnumWhoWon::White => {
                     if show_log {
-                        // print_and_flush("White won! ");
                         print_and_flush("W");
-                        flush();
                     }
                     players[i].rating += delta_rating_w;
-                    players[j].rating -= delta_rating_w;
-                    // player_j.rating -= delta_rating_2 / 4.0;
-                    // player_i.rating += 10.0;
-                    // player_j.rating -= 10.0;
+                    // players[j].rating -= delta_rating_w;
+                    players[j].rating -= delta_rating_w / 5.0;
                 }
                 EnumWhoWon::Black => {
                     if show_log {
-                        // print_and_flush("Black won! ");
                         print_and_flush("B");
-                        flush();
                     }
-                    players[i].rating -= delta_rating_b;
-                    // player_i.rating += delta_rating_1 / 4.0;
+                    // players[i].rating -= delta_rating_b;
+                    players[i].rating -= delta_rating_b / 5.0;
                     players[j].rating += delta_rating_b;
-                    // player_i.rating -= 10.0;
-                    // player_j.rating += 10.0;
                 }
                 EnumWhoWon::Draw => {
                     if show_log {
-                        // print_and_flush("Draw! ");
                         print_and_flush("D");
-                        flush();
                     }
                     let delta_rating_min: f32 = delta_rating_w.min(delta_rating_b);
                     if players[i].rating > players[j].rating {
@@ -619,9 +757,7 @@ fn play_tournament(nns: Vec<NeuralNetwork>, show_log: bool) -> Vec<NeuralNetwork
                 }
                 EnumWhoWon::WhiteByPoints => {
                     if show_log {
-                        // print_and_flush("WhiteByPoints won! ");
                         print_and_flush("w");
-                        flush();
                     }
                     players[i].rating += delta_rating_w / 20.0;
                     players[j].rating -= delta_rating_w / 20.0;
@@ -630,9 +766,7 @@ fn play_tournament(nns: Vec<NeuralNetwork>, show_log: bool) -> Vec<NeuralNetwork
                 }
                 EnumWhoWon::BlackByPoints => {
                     if show_log {
-                        // print_and_flush("BlackByPoints won! ");
                         print_and_flush("b");
-                        flush();
                     }
                     players[i].rating -= delta_rating_b / 20.0;
                     players[j].rating += delta_rating_b / 20.0;
@@ -641,9 +775,7 @@ fn play_tournament(nns: Vec<NeuralNetwork>, show_log: bool) -> Vec<NeuralNetwork
                 }
                 EnumWhoWon::DrawByPoints => {
                     if show_log {
-                        // print_and_flush("DrawByPoints! ");
                         print_and_flush("d");
-                        flush();
                     }
                     if players[i].rating > players[j].rating {
                         players[i].rating -= delta_rating_w / 20.0;
@@ -695,29 +827,56 @@ fn play_tournament(nns: Vec<NeuralNetwork>, show_log: bool) -> Vec<NeuralNetwork
         println!("]\n");
 
         {
-            let (who_won, game_moves) = play_game(&players[0].nn, &players[0].nn, false, true);
+            let (who_won, game_moves) = play_game(
+                &players[0].nn,
+                &players[0].nn,
+                PlayGameConfig {
+                    get_game: true,
+                    show_log: gen >= GEN_TO_START_WATCHING,
+                    wait_for_enter_after_every_move: false,
+                    human_color: None,
+                }
+            );
             println!(
-                "BEST vs SELF: winner={who_won:?}, af1={:?}, moves: ' {} '\n",
-                players[0].nn.get_activation_function(),
-                game_moves.unwrap(),
+                "BEST vs SELF: winner={who_won:?}, af1={af:?}, moves: ' {moves} '\n",
+                af = players[0].nn.get_activation_function(),
+                moves = game_moves.unwrap_or(MOVES_NOT_PROVIDED.to_string()),
             );
         }
 
         {
-            let (who_won, game_moves) = play_game(&players[0].nn, &players[1].nn, false, true);
+            let (who_won, game_moves) = play_game(
+                &players[0].nn,
+                &players[1].nn,
+                PlayGameConfig {
+                    get_game: true,
+                    show_log: gen >= GEN_TO_START_WATCHING,
+                    wait_for_enter_after_every_move: false,
+                    human_color: None,
+                }
+            );
             println!(
-                "BEST vs BEST2: winner={who_won:?}, af2={:?}, moves: ' {} '\n",
-                players[1].nn.get_activation_function(),
-                game_moves.unwrap(),
+                "BEST vs BEST2: winner={who_won:?}, af2={af:?}, moves: ' {moves} '\n",
+                af = players[1].nn.get_activation_function(),
+                moves = game_moves.unwrap_or(MOVES_NOT_PROVIDED.to_string()),
             );
         }
 
         {
-            let (who_won, game_moves) = play_game(&players[0].nn, &players.last().unwrap().nn, false, true);
+            let (who_won, game_moves) = play_game(
+                &players[0].nn,
+                &players.last().unwrap().nn,
+                PlayGameConfig {
+                    get_game: true,
+                    show_log: gen >= GEN_TO_START_WATCHING,
+                    wait_for_enter_after_every_move: false,
+                    human_color: None,
+                }
+            );
             println!(
-                "BEST vs WORST: winner={who_won:?}, af2={:?}, moves: ' {} '\n",
-                players.last().unwrap().nn.get_activation_function(),
-                game_moves.unwrap()
+                "BEST vs WORST: winner={who_won:?}, af2={af:?}, moves: ' {moves} '\n",
+                af = players.last().unwrap().nn.get_activation_function(),
+                moves = game_moves.unwrap_or(MOVES_NOT_PROVIDED.to_string()),
             );
         }
     }
