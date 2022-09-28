@@ -29,6 +29,8 @@ const ALLOW_WIN_BY_POINTS: bool = true;
 const USE_NOISE: bool = false;
 const NEURONS_IN_FIRST_LAYER: usize = if !USE_NOISE { 64 } else { 65 };
 
+const PLAY_WITH_NN_AFTER_TRAINING: bool = false;
+
 const MOVES_LIMIT: u32 = 200;
 
 pub enum ComputingUnit {
@@ -169,6 +171,10 @@ fn main() {
     println!("evolution finished successfuly!");
 
     // println!("best_nn = {}\n\n", nns[0]);
+
+    if !PLAY_WITH_NN_AFTER_TRAINING {
+        return;
+    }
 
     loop {
         print_and_flush("Choose side to play (w/b): ");
