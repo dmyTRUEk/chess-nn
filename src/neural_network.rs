@@ -2,7 +2,7 @@
 
 use std::fmt;
 
-use arrayfire::{Array, Dim4, matmul, div, constant, exp, sign, abs, sqrt, log};
+use arrayfire::{Array, Dim4, matmul, div, constant, exp, sign, abs, sqrt};
 use rand::{Rng, thread_rng, prelude::ThreadRng};
 
 use crate::{
