@@ -41,24 +41,27 @@ pub const COMPUTING_UNIT: ComputingUnit = ComputingUnit::CPU;
 
 
 fn main() {
-    // let nn_heights: Vec<usize> = vec![64, 700, 600, 500, 400, 300, 200, 100, 1];
-    // let nn_heights: Vec<usize> = vec![64, 100, 100, 100, 100, 100, 100, 1];
-    // let nn_heights: Vec<usize> = vec![64, 60, 40, 20, 10, 1];
-    // let nn_heights: Vec<usize> = vec![64, 10000, 10000, 10000, 1];
-    // let nn_heights: Vec<usize> = vec![64, 1000, 1000, 1000, 1];
-    // let nn_heights: Vec<usize> = vec![64, 200, 200, 200, 1];
-    // let nn_heights: Vec<usize> = vec![64, 100, 100, 100, 1];
-    // let nn_heights: Vec<usize> = vec![64, 150, 70, 20, 1];
-    // let nn_heights: Vec<usize> = vec![64, 60, 40, 20, 1];
-    // let nn_heights: Vec<usize> = vec![64, 20, 20, 20, 1];
-    let nn_heights: Vec<usize> = vec![64, 20, 15, 10, 1];
-    // let nn_heights: Vec<usize> = vec![64, 200, 200, 1];
-    // let nn_heights: Vec<usize> = vec![64, 100, 100, 1];
-    // let nn_heights: Vec<usize> = vec![64, 10, 10, 1];
-    // let nn_heights: Vec<usize> = vec![64, 1000, 1];
-    // let nn_heights: Vec<usize> = vec![64, 100, 1];
-    // let nn_heights: Vec<usize> = vec![64, 10, 1];
-    // let nn_heights: Vec<usize> = vec![64, 1];
+    let nn_heights: Vec<usize> = vec![
+        // 64, 700, 600, 500, 400, 300, 200, 100, 1
+        // 64, 100, 100, 100, 100, 100, 100, 1
+        // 64, 60, 40, 20, 10, 1
+        // 64, 10000, 10000, 10000, 1
+        // 64, 1000, 1000, 1000, 1
+        // 64, 200, 200, 200, 1
+        // 64, 100, 100, 100, 1
+        64, 300, 70, 20, 1
+        // 64, 60, 40, 20, 1
+        // 64, 20, 20, 20, 1
+        // 64, 15, 20, 11, 1,
+        // 64, 200, 200, 1
+        // 64, 100, 100, 1
+        // 64, 10, 10, 1
+        // 64, 1000, 1
+        // 64, 100, 1
+        // 64, 10, 1
+        // 64, 1
+    ];
+    // TODO: refactor so i dont have to write 1 at the end
 
     let nn_heights: Vec<usize> = {
         let mut nn_heights_new: Vec<usize> = nn_heights;
