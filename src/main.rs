@@ -18,9 +18,9 @@ use crate::{
 
 
 
-const PLAYERS_AMOUNT: usize = 60;
+const PLAYERS_AMOUNT: usize = 10;
 
-const GENERATIONS: u32 = 100;
+const GENERATIONS: u32 = 10;
 const GEN_TO_START_WATCHING: u32 = 300;
 
 const ALLOW_WIN_BY_POINTS: bool = true;
@@ -31,7 +31,7 @@ const NEURONS_IN_FIRST_LAYER: usize = if !USE_NOISE { 64 } else { 65 };
 
 const PLAY_WITH_NN_AFTER_TRAINING: bool = false;
 
-const MOVES_LIMIT: u32 = 200;
+const MOVES_LIMIT: u32 = 300;
 
 pub enum ComputingUnit {
     CPU,
