@@ -37,6 +37,7 @@ pub enum ComputingUnit {
     CPU,
     GPU,
 }
+// TODO: make this compile time check and then dont use `arrayfire` at all
 pub const COMPUTING_UNIT: ComputingUnit = ComputingUnit::CPU;
 // pub const COMPUTING_UNIT: ComputingUnit = ComputingUnit::GPU;
 
