@@ -195,12 +195,15 @@ impl NeuralNetwork {
                     input = div(&1.0_f32, &input, false);
                     //input = div(&1.0_f32, &(constant(1.0_f32, input.dims()) + exp(&(-input/constant(10.0_f32, &input.dims())))), false);
                 }
+                ActivationFunction::Arctan => {
+                    todo!()
+                }
                 ActivationFunction::SignSqrtAbs => {
                     input = sign(&input) * sqrt(&abs(&input));
                 }
-                ActivationFunction::SignLnAbs => {
-                    input = sign(&input) * log(&abs(&input));
-                }
+                // ActivationFunction::SignLnAbs => {
+                //     input = sign(&input) * log(&abs(&input));
+                // }
                 // ActivationFunction::Linear => {
                 //     // input = input;
                 // }
