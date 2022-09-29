@@ -1,6 +1,6 @@
 /// Activation Functions
 
-use rand::{Rng, thread_rng, prelude::ThreadRng};
+use rand::{Rng, prelude::ThreadRng};
 
 
 
@@ -51,8 +51,7 @@ pub fn calc_activation_function(x: f32, activation_function: ActivationFunction)
 }
 
 // TODO: pass &mut rng
-pub fn get_random_activation_function() -> ActivationFunction {
-    let mut rng: ThreadRng = thread_rng();
+pub fn get_random_activation_function(rng: &mut ThreadRng) -> ActivationFunction {
     match rng.gen_range(0..3) {
         0 => ActivationFunction::Sigmoid,
         1 => ActivationFunction::Arctan,

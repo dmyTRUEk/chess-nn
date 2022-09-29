@@ -83,7 +83,7 @@ impl NeuralNetwork {
     ) -> Self {
         let mut rng = thread_rng();
         let mut nn = NeuralNetwork::new(heights);
-        nn.activation_function = get_random_activation_function();
+        nn.activation_function = get_random_activation_function(&mut rng);
         for l in 0..nn.weight.len() {
             for h in 0..nn.weight[l].len() {
                 nn.consts[l][h] = rng.gen_range(consts_min..=consts_max);
@@ -99,7 +99,7 @@ impl NeuralNetwork {
     pub fn with_smart_random(heights: &Vec<usize>) -> Self {
         let mut rng = thread_rng();
         let mut nn = NeuralNetwork::new(heights);
-        nn.activation_function = get_random_activation_function();
+        nn.activation_function = get_random_activation_function(&mut rng);
         for l in 1..nn.weight.len() {
             for h in 0..nn.weight[l].len() {
                 nn.consts[l][h] = rng.gen_range(-2.0..2.0_f32).powi(2);
@@ -261,7 +261,7 @@ impl NeuralNetwork {
         // println!("neurons_to_evolve = {}", neurons_to_evolve);
 
         if rng.gen_bool(0.1) {
-            self.activation_function = get_random_activation_function();
+            self.activation_function = get_random_activation_function(&mut rng);
         }
 
         for _ in 0..neurons_to_evolve {
