@@ -1,4 +1,8 @@
+#![feature(test)]
+
 /// Main file
+
+extern crate test;
 
 pub mod utils_io;
 pub mod neural_network;
@@ -892,5 +896,21 @@ fn play_tournament(nns: Vec<NeuralNetwork>, gen: u32) -> Vec<NeuralNetwork> {
     }
 
     players_sorted.into_iter().map(|p| p.nn).collect()
+}
+
+
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use test::Bencher;
+
+    #[bench]
+    fn feature(b: &mut Bencher) {
+        b.iter(|| {
+            main();
+        });
+    }
 }
 
