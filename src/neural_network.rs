@@ -3,7 +3,7 @@
 use std::fmt;
 
 use arrayfire::{Array, Dim4, matmul, div, constant, exp, sign, abs, sqrt};
-use rand::{Rng, thread_rng, prelude::ThreadRng};
+use rand::{Rng, prelude::ThreadRng};
 
 use crate::{
     activation_functions::*,
@@ -80,10 +80,10 @@ impl NeuralNetwork {
         heights: &Vec<usize>,
         weight_min: f32, weight_max: f32,
         consts_min: f32, consts_max: f32,
+        rng: &mut ThreadRng,
     ) -> Self {
-        let mut rng = thread_rng();
         let mut nn = NeuralNetwork::new(heights);
-        nn.activation_function = get_random_activation_function(&mut rng);
+        nn.activation_function = get_random_activation_function(rng);
         for l in 0..nn.weight.len() {
             for h in 0..nn.weight[l].len() {
                 nn.consts[l][h] = rng.gen_range(consts_min..=consts_max);
@@ -96,10 +96,9 @@ impl NeuralNetwork {
     }
 
     #[deprecated]
-    pub fn with_smart_random(heights: &Vec<usize>) -> Self {
-        let mut rng = thread_rng();
+    pub fn with_smart_random(heights: &Vec<usize>, rng: &mut ThreadRng) -> Self {
         let mut nn = NeuralNetwork::new(heights);
-        nn.activation_function = get_random_activation_function(&mut rng);
+        nn.activation_function = get_random_activation_function(rng);
         for l in 1..nn.weight.len() {
             for h in 0..nn.weight[l].len() {
                 nn.consts[l][h] = rng.gen_range(-2.0..2.0_f32).powi(2);
@@ -249,10 +248,8 @@ impl NeuralNetwork {
         (l, h)
     }
 
-    pub fn evolve(&mut self, evolution_factor: f32) {
+    pub fn evolve(&mut self, evolution_factor: f32, rng: &mut ThreadRng) {
         assert!(0.0 <= evolution_factor && evolution_factor <= 1.0);
-
-        let mut rng = thread_rng();
 
         let total_neurons: u32 = self.get_total_neurons() as u32;
         let neurons_to_evolve: u32 = ((total_neurons as f32) * evolution_factor) as u32;
@@ -261,11 +258,11 @@ impl NeuralNetwork {
         // println!("neurons_to_evolve = {}", neurons_to_evolve);
 
         if rng.gen_bool(0.1) {
-            self.activation_function = get_random_activation_function(&mut rng);
+            self.activation_function = get_random_activation_function(rng);
         }
 
         for _ in 0..neurons_to_evolve {
-            let (l, h) = self.choose_random_neuron(&mut rng);
+            let (l, h) = self.choose_random_neuron(rng);
 
             let total_weights: u32 = self.weight[l][h].len() as u32;
             let weights_to_evolve: u32 = ((total_weights as f32) * evolution_factor) as u32;

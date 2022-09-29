@@ -111,14 +111,16 @@ fn main() {
         }
     }
 
+    let mut rng: ThreadRng = thread_rng();
+
     let (weight_min, weight_max): (f32, f32) = (-5.0, 5.0);
     let (consts_min, consts_max): (f32, f32) = (-5.0, 5.0);
 
     let mut nns: Vec<NeuralNetwork> = (0..PLAYERS_AMOUNT)
         .map( |_i|
-            NeuralNetwork::with_random(&nn_heights, weight_min, weight_max, consts_min, consts_max)
+            NeuralNetwork::with_random(&nn_heights, weight_min, weight_max, consts_min, consts_max, &mut rng)
             // NeuralNetwork::with_consts(&nn_heights, 1.0, 1.0, activation_functions::ActivationFunction::Sigmoid))
-            // NeuralNetwork::with_smart_random(&nn_heights))
+            // NeuralNetwork::with_smart_random(&nn_heights, &mut rng))
         )
         .collect();
     let mut nns_old: Vec<NeuralNetwork>;
@@ -129,7 +131,7 @@ fn main() {
 
         nns_old = nns.clone();
 
-        nns = play_tournament(nns, generation);
+        nns = play_tournament(nns, generation, &mut rng);
 
         if generation < GENERATIONS {
             fn generation_to_evolve_factor(gen: u32, gens: u32) -> f32 {
@@ -153,12 +155,12 @@ fn main() {
             const SAVE_BEST_N: usize = 1 + PLAYERS_AMOUNT / 4;
             for i in SAVE_BEST_N..PLAYERS_AMOUNT {
                 nns[i] = nns[i%SAVE_BEST_N].clone();
-                nns[i].evolve(evolution_factor);
+                nns[i].evolve(evolution_factor, &mut rng);
             }
             let len = nns.len();
             // nns[len-2] = NeuralNetwork::with_consts(&nn_heights, 0.01, 0.0, get_random_activation_function());
             // nns[len-1] = NeuralNetwork::with_smart_random(&nn_heights);
-            nns[len-1] = NeuralNetwork::with_random(&nn_heights, weight_min, weight_max, consts_min, consts_max);
+            nns[len-1] = NeuralNetwork::with_random(&nn_heights, weight_min, weight_max, consts_min, consts_max, &mut rng);
         }
 
         if nns_old[0] == nns[0] && generation > 0 {
@@ -198,7 +200,8 @@ fn main() {
                 show_log: true,
                 wait_for_enter_after_every_move: false,
                 human_color: Some(side_to_play),
-            }
+            },
+            &mut rng
         );
         println!(
             "{who_vs_who}: winner={who_won:?}, af={af:?}, moves: ' {moves} '\n",
@@ -318,7 +321,7 @@ const PIECES_VALUE: PiecesValue = PiecesValue {
     king:   20.0,
 };
 
-fn board_to_vec_for_nn(board: &Board) -> Vec<f32> {
+fn board_to_vec_for_nn(board: &Board, rng: &mut ThreadRng) -> Vec<f32> {
     let mut input_for_nn: Vec<f32> = vec![0.0; NEURONS_IN_FIRST_LAYER];
     let mut n: usize = 0;
     for c in board.to_string().chars() {
@@ -368,7 +371,6 @@ fn board_to_vec_for_nn(board: &Board) -> Vec<f32> {
     //     Color::Black => { -1.0 }
     // };
     if USE_NOISE {
-        let mut rng: ThreadRng = thread_rng();
         input_for_nn[64] = rng.gen_range(-10.0..10.0);
     }
     if board.side_to_move() == Color::Black {
@@ -380,8 +382,8 @@ fn board_to_vec_for_nn(board: &Board) -> Vec<f32> {
     input_for_nn
 }
 
-fn analyze(board: &Board, nn: &NeuralNetwork) -> f32 {
-    let input_for_nn: Vec<f32> = board_to_vec_for_nn(board);
+fn analyze(board: &Board, nn: &NeuralNetwork, rng: &mut ThreadRng) -> f32 {
+    let input_for_nn: Vec<f32> = board_to_vec_for_nn(board, rng);
     // println!("input_for_nn = {:?}", array_board);
     nn.process_input(&input_for_nn)[0]
 }
@@ -463,6 +465,7 @@ fn play_game(
     nn_white: &NeuralNetwork,
     nn_black: &NeuralNetwork,
     config: PlayGameConfig,
+    rng: &mut ThreadRng,
 ) -> (EnumWhoWon, Option<String>) {
     // assert_eq!(nn_white.weight[0].len(), NEURONS_IN_FIRST_LAYER);
     // assert_eq!(nn_black.weight[0].len(), NEURONS_IN_FIRST_LAYER);
@@ -521,7 +524,8 @@ fn play_game(
                 match side_to_move {
                     Color::White => { &nn_white }
                     Color::Black => { &nn_black }
-                }
+                },
+                rng
             );
             let mwm_possible = MoveWithMark{chess_move: move_, mark: mark_possible};
             if config.show_log {
@@ -697,7 +701,11 @@ fn logistic(x: f32) -> f32 {
     100.0 / ( 1.0 + 10.0_f32.powf(x/400.0) )
 }
 
-fn play_tournament(nns: Vec<NeuralNetwork>, gen: u32) -> Vec<NeuralNetwork> {
+fn play_tournament(
+    nns: Vec<NeuralNetwork>,
+    gen: u32,
+    rng: &mut ThreadRng
+) -> Vec<NeuralNetwork> {
     const DEFAULT_RATING: f32 = 1000.0;
     let mut players: Vec<Player> = nns.into_iter().map(|nn| Player{nn, rating: DEFAULT_RATING}).collect();
 
@@ -719,7 +727,8 @@ fn play_tournament(nns: Vec<NeuralNetwork>, gen: u32) -> Vec<NeuralNetwork> {
                     show_log: false,
                     wait_for_enter_after_every_move: false,
                     human_color: None,
-                }
+                },
+                rng
             );
             let game_res_who_won: EnumWhoWon = game_res.0;
 
@@ -849,7 +858,8 @@ fn play_tournament(nns: Vec<NeuralNetwork>, gen: u32) -> Vec<NeuralNetwork> {
                     show_log: gen >= GEN_TO_START_WATCHING,
                     wait_for_enter_after_every_move: false,
                     human_color: None,
-                }
+                },
+                rng
             );
             println!(
                 "BEST vs SELF: winner={who_won:?}, af1={af:?}, moves: ' {moves} '\n",
@@ -867,7 +877,8 @@ fn play_tournament(nns: Vec<NeuralNetwork>, gen: u32) -> Vec<NeuralNetwork> {
                     show_log: gen >= GEN_TO_START_WATCHING,
                     wait_for_enter_after_every_move: false,
                     human_color: None,
-                }
+                },
+                rng
             );
             println!(
                 "BEST vs BEST2: winner={who_won:?}, af2={af:?}, moves: ' {moves} '\n",
@@ -885,7 +896,8 @@ fn play_tournament(nns: Vec<NeuralNetwork>, gen: u32) -> Vec<NeuralNetwork> {
                     show_log: gen >= GEN_TO_START_WATCHING,
                     wait_for_enter_after_every_move: false,
                     human_color: None,
-                }
+                },
+                rng
             );
             println!(
                 "BEST vs WORST: winner={who_won:?}, af2={af:?}, moves: ' {moves} '\n",
