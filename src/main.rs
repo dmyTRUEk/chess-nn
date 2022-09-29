@@ -907,7 +907,7 @@ mod tests {
     use test::Bencher;
 
     #[bench]
-    fn feature(b: &mut Bencher) {
+    fn bench_main(b: &mut Bencher) {
         b.iter(|| {
             main();
         });
