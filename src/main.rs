@@ -5,6 +5,7 @@
 extern crate test;
 
 pub mod utils_io;
+// pub mod utils_hashmap;
 pub mod neural_network;
 pub mod activation_functions;
 pub mod simple_rng;
@@ -30,14 +31,14 @@ const GENERATIONS: u32 = 10;
 const GEN_TO_START_WATCHING: u32 = 300;
 
 const ALLOW_WIN_BY_POINTS: bool = true;
+const MOVES_LIMIT: u32 = 300;
 
 // additional neuron for choosing move a bit random
-const USE_NOISE: bool = false;
+const USE_NOISE: bool = true;
 const NEURONS_IN_FIRST_LAYER: usize = if !USE_NOISE { 64 } else { 65 };
 
-const PLAY_WITH_NN_AFTER_TRAINING: bool = false;
-
-const MOVES_LIMIT: u32 = 300;
+const SHOW_TRAINING_LOGS: bool = true;
+const PLAY_WITH_NN_AFTER_TRAINING: bool = true;
 
 pub enum ComputingUnit {
     CPU,
@@ -49,33 +50,7 @@ pub const COMPUTING_UNIT: ComputingUnit = ComputingUnit::CPU;
 
 
 
-// #[allow(unreachable_code)] // enable this for testing random, to hide warning
 fn main() {
-    // for testing random:
-
-    // let mut rng: ThreadRng = ThreadRng::new(0);
-    // for _ in 0..10_000 {
-    //     let random_float_0_1: f32 = rng.random_float_from_0_to_1();
-    //     println!("{random_float_0_1}\t{u:#034b}", u=unsafe { std::mem::transmute_copy::<f32, u32>(&random_float_0_1) });
-    // }
-    // println!();
-
-    // let fs: Vec<f32> = vec![ 0.0, 1.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.1, ];
-    // for f in fs {
-    //     println!("{f:.1} in binary = {:#034b}", unsafe { std::mem::transmute::<f32, u32>(f) });
-    // }
-
-    // let b: u32 = 0b___0__0111_0000__000_0000_0000_0000_0000_0000;
-    // let f: f32 = unsafe { std::mem::transmute_copy::<u32, f32>(&b) };
-    // println!("{b:#08b} -> {f}");
-    // let b: u32 = 0b___0__0111_0000__111_1111_1111_1111_1111_1111;
-    // let f: f32 = unsafe { std::mem::transmute_copy::<u32, f32>(&b) };
-    // println!("{b:#08b} -> {f}");
-
-    // return;
-
-
-
     let nn_heights: Vec<usize> = vec![
         // 64, 700, 600, 500, 400, 300, 200, 100, 1
         // 64, 100, 100, 100, 100, 100, 100, 1
@@ -84,19 +59,20 @@ fn main() {
         // 64, 1000, 1000, 1000, 1
         // 64, 200, 200, 200, 1
         // 64, 100, 100, 100, 1
-        64, 300, 70, 20, 1
+        64, 300, 70, 20, 1 // for test
         // 64, 60, 40, 20, 1
         // 64, 20, 20, 20, 1
-        // 64, 15, 20, 11, 1,
+        // 64, 15, 20, 11, 1
         // 64, 200, 200, 1
         // 64, 100, 100, 1
-        // 64, 10, 10, 1
+        // 64, 10, 10, 1 // for bench
         // 64, 1000, 1
         // 64, 100, 1
         // 64, 10, 1
         // 64, 1
     ];
-    // TODO: refactor so i dont have to write 1 at the end
+
+    // TODO: refactor so i dont have to write 64 at begin and 1 at the end
 
     let nn_heights: Vec<usize> = {
         let mut nn_heights_new: Vec<usize> = nn_heights;
@@ -143,8 +119,8 @@ fn main() {
     // let mut rng: ThreadRng = thread_rng();
     let mut rng: SimpleRng = SimpleRng::new(0);
 
-    let (weight_min, weight_max): (f32, f32) = (-5.0, 5.0);
-    let (consts_min, consts_max): (f32, f32) = (-5.0, 5.0);
+    let (weight_min, weight_max): (f32, f32) = (-1.0, 1.0);
+    let (consts_min, consts_max): (f32, f32) = (-1.0, 1.0);
 
     let mut nns: Vec<NeuralNetwork> = (0..PLAYERS_AMOUNT)
         .map( |_i|
@@ -155,6 +131,8 @@ fn main() {
         .collect();
     let mut nns_old: Vec<NeuralNetwork>;
     let mut new_best_same_counter: u32 = 0;
+
+    // TODO: pretraining: mates in one, some debutes, free pieces
 
     for generation in 0..=GENERATIONS {
         println!("generation: {generation} / {GENERATIONS}");
@@ -176,10 +154,14 @@ fn main() {
                 // 0.1 * ( - 3.0 * (gen as f32) / (gens as f32) ).exp()
             }
             let evolution_factor: f32 = generation_to_evolve_factor(generation, GENERATIONS);
-            println!("evolving with evolution_factor = {}%", 100.0*evolution_factor);
+            if SHOW_TRAINING_LOGS {
+                println!("evolving with evolution_factor = {}%", 100.0*evolution_factor);
+            }
 
             let approx_neurons_to_evolve: f32 = evolution_factor*((sum_vec(&nn_heights)-nn_heights[0]) as f32);
-            println!("approx neurons_to_evolve = {approx_neurons_to_evolve}");
+            if SHOW_TRAINING_LOGS {
+                println!("approx neurons_to_evolve = {approx_neurons_to_evolve}");
+            }
 
             // first part is best nns so dont evolve them, but second part will be evolved
             const SAVE_BEST_N: usize = 1 + PLAYERS_AMOUNT / 4;
@@ -195,17 +177,21 @@ fn main() {
 
         if nns_old[0] == nns[0] && generation > 0 {
             new_best_same_counter += 1;
-            println!("WARNING: new best is same {new_best_same_counter} times!!!");
+            if SHOW_TRAINING_LOGS {
+                println!("WARNING: new best is same {new_best_same_counter} times!!!");
+            }
         }
         else {
             new_best_same_counter = 0;
         }
 
-        println!("\n");
+        if SHOW_TRAINING_LOGS {
+            println!("\n");
+        }
 
     }
 
-    println!("evolution finished successfuly!");
+    println!("Evolution finished successfuly!");
 
     // println!("best_nn = {}\n\n", nns[0]);
 
@@ -354,6 +340,7 @@ const PIECES_VALUE: PiecesValue = PiecesValue {
 fn board_to_vec_for_nn(board: &Board, rng: &mut SimpleRng) -> Vec<f32> {
     let mut input_for_nn: Vec<f32> = vec![0.0; NEURONS_IN_FIRST_LAYER];
     let mut n: usize = 0;
+    // TODO: optimize
     for c in board.to_string().chars() {
         match c {
             ' ' => { break }
@@ -500,7 +487,7 @@ fn play_game(
     // assert_eq!(nn_white.weight[0].len(), NEURONS_IN_FIRST_LAYER);
     // assert_eq!(nn_black.weight[0].len(), NEURONS_IN_FIRST_LAYER);
 
-    let mut moves_amount: u32 = 0;
+    let mut move_number: u32 = 0;
 
     // let mut board_now = Board::default();
     // let mut game = Game::new_with_board(Board::from_fen(FEN_INIT_POSITION.to_string()).unwrap());
@@ -516,8 +503,11 @@ fn play_game(
         pub mark: f32,
     }
 
-    while game.result() == None && moves_amount < 2*MOVES_LIMIT {
-        moves_amount += 1;
+    while game.result() == None && move_number < 2*MOVES_LIMIT {
+        move_number += 1;
+        if config.show_log {
+            println!("move_number = {move_number}");
+        }
 
         let possible_moves = MoveGen::new_legal(&game.current_position());
         let mut omwm_best: Option<MoveWithMark> = None;
@@ -582,6 +572,13 @@ fn play_game(
             }
         }
 
+        if config.show_log {
+            mwms.sort_by(|mwm1, mwm2| mwm1.mark.partial_cmp(&mwm2.mark).unwrap());
+            for mwm in mwms {
+                println!("{move_} -> {mark:.2}", move_=mwm.chess_move.to_string(), mark=mwm.mark);
+            }
+        }
+
         match omwm_best {
             Some(mwm_best) => {
                 // board_now = make_move(board_now, mwm_best.chess_move);
@@ -604,7 +601,7 @@ fn play_game(
 
         if game.can_declare_draw() {
             if ALLOW_WIN_BY_POINTS {
-                // moves_amount = 2*MOVES_LIMIT;
+                // move_number = 2*MOVES_LIMIT;
                 break;
             }
             else {
@@ -613,11 +610,6 @@ fn play_game(
         }
 
         if config.show_log {
-            mwms.sort_by(|mwm1, mwm2| mwm1.mark.partial_cmp(&mwm2.mark).unwrap());
-            for mwm in mwms {
-                println!("{move_} -> {mark:.2}", move_=mwm.chess_move.to_string(), mark=mwm.mark);
-            }
-            println!("moves_amount = {moves_amount}");
             println!("{}", board_to_human_viewable(game.current_position(), true));
             // println!("{}", game.current_position());
             // println!("{:?}", game);
@@ -636,7 +628,8 @@ fn play_game(
         }
     };
 
-    if moves_amount < 2*MOVES_LIMIT && !ALLOW_WIN_BY_POINTS {   // true victory/lose:
+    // TODO: refactor/fix `if`
+    if move_number < 2*MOVES_LIMIT && !ALLOW_WIN_BY_POINTS {   // true victory/lose:
         let game_res: GameResult = game.result().unwrap();
         if config.show_log {
             println!("game result: {:?}", game_res);
@@ -663,7 +656,8 @@ fn play_game(
         }
         let mut piece_sum_white: f32 = 0.0;
         let mut piece_sum_black: f32 = 0.0;
-        for (_i, c) in board_to_human_viewable(game.current_position(), false).to_string().chars().enumerate() {
+        // TODO: optimize?
+        for c in board_to_human_viewable(game.current_position(), false).to_string().chars().into_iter() {
             match c {
                 'p' => { piece_sum_black += PIECES_VALUE.pawn }
                 'n' => { piece_sum_black += PIECES_VALUE.knight }
@@ -741,7 +735,6 @@ fn play_tournament(
 
     let mut tournament_statistics: HashMap<EnumWhoWon, u32> = HashMap::new();
 
-    let show_log: bool = true;
     for i in 0..PLAYERS_AMOUNT {
         for j in 0..PLAYERS_AMOUNT {
             if i == j { continue; }
@@ -772,7 +765,7 @@ fn play_tournament(
 
             match game_res_who_won {
                 EnumWhoWon::White => {
-                    if show_log {
+                    if SHOW_TRAINING_LOGS {
                         print_and_flush("W");
                     }
                     players[i].rating += delta_rating_w;
@@ -780,7 +773,7 @@ fn play_tournament(
                     players[j].rating -= delta_rating_w / 5.0;
                 }
                 EnumWhoWon::Black => {
-                    if show_log {
+                    if SHOW_TRAINING_LOGS {
                         print_and_flush("B");
                     }
                     // players[i].rating -= delta_rating_b;
@@ -788,7 +781,7 @@ fn play_tournament(
                     players[j].rating += delta_rating_b;
                 }
                 EnumWhoWon::Draw => {
-                    if show_log {
+                    if SHOW_TRAINING_LOGS {
                         print_and_flush("D");
                     }
                     let delta_rating_min: f32 = delta_rating_w.min(delta_rating_b);
@@ -809,7 +802,7 @@ fn play_tournament(
                     }
                 }
                 EnumWhoWon::WhiteByPoints => {
-                    if show_log {
+                    if SHOW_TRAINING_LOGS {
                         print_and_flush("w");
                     }
                     players[i].rating += delta_rating_w / 20.0;
@@ -818,7 +811,7 @@ fn play_tournament(
                     // player_j.rating -= 3.0;
                 }
                 EnumWhoWon::BlackByPoints => {
-                    if show_log {
+                    if SHOW_TRAINING_LOGS {
                         print_and_flush("b");
                     }
                     players[i].rating -= delta_rating_b / 20.0;
@@ -827,7 +820,7 @@ fn play_tournament(
                     // player_j.rating += 3.0;
                 }
                 EnumWhoWon::DrawByPoints => {
-                    if show_log {
+                    if SHOW_TRAINING_LOGS {
                         print_and_flush("d");
                     }
                     if players[i].rating > players[j].rating {
@@ -847,7 +840,7 @@ fn play_tournament(
                     }
                 }
             }
-            // if show_log {
+            // if SHOW_TRAINING_LOGS {
             //     println!("new ratings: i={}, j={}", player_i.rating, player_j.rating);
             //     println!();
             // }
@@ -855,9 +848,13 @@ fn play_tournament(
             // players[i].rating = player_w.rating;
             // players[j].rating = player_b.rating;
         }
-        print!(" ");
+        if SHOW_TRAINING_LOGS {
+            print!(" ");
+        }
     }
-    println!();
+    if SHOW_TRAINING_LOGS {
+        println!();
+    }
 
     // sort players:
     let players_sorted: Vec<Player> = {
@@ -866,7 +863,7 @@ fn play_tournament(
         players_sorted
     };
 
-    if show_log {
+    if SHOW_TRAINING_LOGS {
         println!("\nstats: {:?}", tournament_statistics);
 
         let ratings_sorted: Vec<f32> = players_sorted.iter().map(|p| p.rating).collect();
@@ -948,11 +945,13 @@ mod tests {
     use super::*;
     use test::Bencher;
 
+    #[ignore]
     #[bench]
     fn bench_main(b: &mut Bencher) {
         b.iter(|| {
             main();
         });
     }
+
 }
 

@@ -17,6 +17,7 @@ use crate::{
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct NeuralNetwork {
+    // TODO: rewrite to flat `Vec<f32>` -> `[f32; N]`
     weight: Vec<Vec<Vec<f32>>>,
     consts: Vec<Vec<f32>>,
     activation_function: ActivationFunction,
@@ -26,7 +27,6 @@ impl NeuralNetwork {
     pub fn get_activation_function(&self) -> ActivationFunction {
         self.activation_function
     }
-
 
     pub fn new(heights: &Vec<usize>) -> Self {
         let layers = heights.len();
@@ -155,7 +155,7 @@ impl NeuralNetwork {
         return input;
     }
 
- 
+
     //fn process_input_gpu(&self, input: &Vec<f32>) -> Vec<f32> {
     //    let layers = self.weight.len();
     //    // this data is on gpu
