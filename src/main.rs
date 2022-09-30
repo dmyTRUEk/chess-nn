@@ -11,8 +11,8 @@ pub mod activation_functions;
 use std::{collections::HashMap, str::FromStr};
 
 use chess::*;
-use arrayfire::{device_count, device_info, info, set_device};
 use rand::{Rng, prelude::ThreadRng, thread_rng};
+// use arrayfire::{device_count, device_info, info, set_device};
 
 use crate::{
     utils_io::*,
@@ -103,11 +103,12 @@ fn main() {
             println!("using computing unit: CPU");
         }
         ComputingUnit::GPU => {
-            println!("using computing unit: GPU");
-            println!("devices avalaible: {}", device_count());
-            set_device(0);
-            println!("{:?}", device_info());
-            info();
+            todo!("plz enable GPU");
+            // println!("using computing unit: GPU");
+            // println!("devices avalaible: {}", device_count());
+            // set_device(0);
+            // println!("{:?}", device_info());
+            // info();
         }
     }
 

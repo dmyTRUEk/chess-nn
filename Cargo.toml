@@ -15,7 +15,7 @@ panic = "abort"
 # debuginfo = 0
 
 [dependencies]
-arrayfire = "3.8.0"
+#arrayfire = "3.8.0"
 #chess = "3.1.1"
 #chess = { git = "https://github.com/jordanbray/chess/commit/6693cacb2e77297b40349096f1aabbdb7baf0f66?branch=6693cacb2e77297b40349096f1aabbdb7baf0f66&diff=split" }
 chess = { git = "https://github.com/jordanbray/chess", rev = "6693cac" }
