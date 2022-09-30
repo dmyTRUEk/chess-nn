@@ -2,7 +2,7 @@
 
 use std::fmt;
 
-use rand::{Rng, prelude::ThreadRng};
+// use rand::{Rng, prelude::ThreadRng};
 // use arrayfire::{Array, Dim4, matmul, div, constant, exp, sign, abs, sqrt};
 
 use crate::{
@@ -10,6 +10,7 @@ use crate::{
     ComputingUnit,
     COMPUTING_UNIT,
     // NEURONS_IN_FIRST_LAYER,
+    simple_rng::SimpleRng,
 };
 
 
@@ -80,15 +81,15 @@ impl NeuralNetwork {
         heights: &Vec<usize>,
         weight_min: f32, weight_max: f32,
         consts_min: f32, consts_max: f32,
-        rng: &mut ThreadRng,
+        rng: &mut SimpleRng,
     ) -> Self {
         let mut nn = NeuralNetwork::new(heights);
         nn.activation_function = get_random_activation_function(rng);
         for l in 0..nn.weight.len() {
             for h in 0..nn.weight[l].len() {
-                nn.consts[l][h] = rng.gen_range(consts_min..=consts_max);
+                nn.consts[l][h] = rng.gen_range(consts_min..consts_max);
                 for c in 0..nn.weight[l][h].len() {
-                    nn.weight[l][h][c] = rng.gen_range(weight_min..=weight_max);
+                    nn.weight[l][h][c] = rng.gen_range(weight_min..weight_max);
                 }
             }
         }
@@ -96,7 +97,7 @@ impl NeuralNetwork {
     }
 
     #[deprecated]
-    pub fn with_smart_random(heights: &Vec<usize>, rng: &mut ThreadRng) -> Self {
+    pub fn with_smart_random(heights: &Vec<usize>, rng: &mut SimpleRng) -> Self {
         let mut nn = NeuralNetwork::new(heights);
         nn.activation_function = get_random_activation_function(rng);
         for l in 1..nn.weight.len() {
@@ -233,8 +234,8 @@ impl NeuralNetwork {
         res
     }
 
-    fn choose_random_neuron(&self, rng: &mut ThreadRng) -> (usize, usize) {
-        let neuron_id_to_evolve: usize = rng.gen_range(0..self.get_total_neurons());
+    fn choose_random_neuron(&self, rng: &mut SimpleRng) -> (usize, usize) {
+        let neuron_id_to_evolve: usize = rng.gen_range_usize(0..self.get_total_neurons());
         let mut l: usize = 1;
         let mut h: usize = 0;
         for _j in 0..neuron_id_to_evolve {
@@ -249,12 +250,12 @@ impl NeuralNetwork {
         (l, h)
     }
 
-    pub fn evolve(&mut self, evolution_factor: f32, rng: &mut ThreadRng) {
+    pub fn evolve(&mut self, evolution_factor: f32, rng: &mut SimpleRng) {
         assert!(0.0 <= evolution_factor && evolution_factor <= 1.0);
 
         let total_neurons: u32 = self.get_total_neurons() as u32;
         let neurons_to_evolve: u32 = ((total_neurons as f32) * evolution_factor) as u32;
-        let neurons_to_evolve: u32 = rng.gen_range(1..=neurons_to_evolve.max(1));
+        let neurons_to_evolve: u32 = 1 + rng.gen_range_u32(0..neurons_to_evolve);
         // println!("total_neurons = {}", total_neurons);
         // println!("neurons_to_evolve = {}", neurons_to_evolve);
 
@@ -265,13 +266,13 @@ impl NeuralNetwork {
         for _ in 0..neurons_to_evolve {
             let (l, h) = self.choose_random_neuron(rng);
 
-            let total_weights: u32 = self.weight[l][h].len() as u32;
+            let total_weights: usize = self.weight[l][h].len();
             let weights_to_evolve: u32 = ((total_weights as f32) * evolution_factor) as u32;
-            let weights_to_evolve: u32 = rng.gen_range(1..=weights_to_evolve.max(1));
+            let weights_to_evolve: u32 = 1 + rng.gen_range_u32(0..weights_to_evolve);
             // println!("total_weights = {}", total_weights);
             // println!("weights_to_evolve = {}", weights_to_evolve);
 
-            let sign: f32 = if rng.gen_bool((evolution_factor/2.0) as f64) { -1.0 } else { 1.0 };
+            let sign: f32 = if rng.gen_bool(evolution_factor/2.0) { -1.0 } else { 1.0 };
             self.consts[l][h] *= sign;
 
             if rng.gen_bool(0.5) {
@@ -287,9 +288,9 @@ impl NeuralNetwork {
 
             for _ in 0..weights_to_evolve {
                 // println!("old value: {}", self.weights[h]);
-                let c: usize = rng.gen_range(0..total_weights) as usize;
+                let c: usize = rng.gen_range_usize(0..total_weights);
 
-                let sign: f32 = if rng.gen_bool((evolution_factor/2.0) as f64) { -1.0 } else { 1.0 };
+                let sign: f32 = if rng.gen_bool(evolution_factor/2.0) { -1.0 } else { 1.0 };
                 self.weight[l][h][c] *= sign;
 
                 if rng.gen_bool(0.5) {

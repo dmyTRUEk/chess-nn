@@ -7,17 +7,19 @@ extern crate test;
 pub mod utils_io;
 pub mod neural_network;
 pub mod activation_functions;
+pub mod simple_rng;
 
 use std::{collections::HashMap, str::FromStr};
 
 use chess::*;
-use rand::{Rng, prelude::ThreadRng, thread_rng};
+// use rand::{Rng, prelude::ThreadRng, thread_rng};
 // use arrayfire::{device_count, device_info, info, set_device};
 
 use crate::{
     utils_io::*,
     neural_network::*,
     // activation_functions::get_random_activation_function,
+    simple_rng::SimpleRng,
 };
 
 
@@ -47,7 +49,33 @@ pub const COMPUTING_UNIT: ComputingUnit = ComputingUnit::CPU;
 
 
 
+// #[allow(unreachable_code)] // enable this for testing random, to hide warning
 fn main() {
+    // for testing random:
+
+    // let mut rng: ThreadRng = ThreadRng::new(0);
+    // for _ in 0..10_000 {
+    //     let random_float_0_1: f32 = rng.random_float_from_0_to_1();
+    //     println!("{random_float_0_1}\t{u:#034b}", u=unsafe { std::mem::transmute_copy::<f32, u32>(&random_float_0_1) });
+    // }
+    // println!();
+
+    // let fs: Vec<f32> = vec![ 0.0, 1.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.1, ];
+    // for f in fs {
+    //     println!("{f:.1} in binary = {:#034b}", unsafe { std::mem::transmute::<f32, u32>(f) });
+    // }
+
+    // let b: u32 = 0b___0__0111_0000__000_0000_0000_0000_0000_0000;
+    // let f: f32 = unsafe { std::mem::transmute_copy::<u32, f32>(&b) };
+    // println!("{b:#08b} -> {f}");
+    // let b: u32 = 0b___0__0111_0000__111_1111_1111_1111_1111_1111;
+    // let f: f32 = unsafe { std::mem::transmute_copy::<u32, f32>(&b) };
+    // println!("{b:#08b} -> {f}");
+
+    // return;
+
+
+
     let nn_heights: Vec<usize> = vec![
         // 64, 700, 600, 500, 400, 300, 200, 100, 1
         // 64, 100, 100, 100, 100, 100, 100, 1
@@ -112,7 +140,8 @@ fn main() {
         }
     }
 
-    let mut rng: ThreadRng = thread_rng();
+    // let mut rng: ThreadRng = thread_rng();
+    let mut rng: SimpleRng = SimpleRng::new(0);
 
     let (weight_min, weight_max): (f32, f32) = (-5.0, 5.0);
     let (consts_min, consts_max): (f32, f32) = (-5.0, 5.0);
@@ -322,7 +351,7 @@ const PIECES_VALUE: PiecesValue = PiecesValue {
     king:   20.0,
 };
 
-fn board_to_vec_for_nn(board: &Board, rng: &mut ThreadRng) -> Vec<f32> {
+fn board_to_vec_for_nn(board: &Board, rng: &mut SimpleRng) -> Vec<f32> {
     let mut input_for_nn: Vec<f32> = vec![0.0; NEURONS_IN_FIRST_LAYER];
     let mut n: usize = 0;
     for c in board.to_string().chars() {
@@ -383,7 +412,7 @@ fn board_to_vec_for_nn(board: &Board, rng: &mut ThreadRng) -> Vec<f32> {
     input_for_nn
 }
 
-fn analyze(board: &Board, nn: &NeuralNetwork, rng: &mut ThreadRng) -> f32 {
+fn analyze(board: &Board, nn: &NeuralNetwork, rng: &mut SimpleRng) -> f32 {
     let input_for_nn: Vec<f32> = board_to_vec_for_nn(board, rng);
     // println!("input_for_nn = {:?}", array_board);
     nn.process_input(&input_for_nn)[0]
@@ -466,7 +495,7 @@ fn play_game(
     nn_white: &NeuralNetwork,
     nn_black: &NeuralNetwork,
     config: PlayGameConfig,
-    rng: &mut ThreadRng,
+    rng: &mut SimpleRng,
 ) -> (EnumWhoWon, Option<String>) {
     // assert_eq!(nn_white.weight[0].len(), NEURONS_IN_FIRST_LAYER);
     // assert_eq!(nn_black.weight[0].len(), NEURONS_IN_FIRST_LAYER);
@@ -705,7 +734,7 @@ fn logistic(x: f32) -> f32 {
 fn play_tournament(
     nns: Vec<NeuralNetwork>,
     gen: u32,
-    rng: &mut ThreadRng
+    rng: &mut SimpleRng,
 ) -> Vec<NeuralNetwork> {
     const DEFAULT_RATING: f32 = 1000.0;
     let mut players: Vec<Player> = nns.into_iter().map(|nn| Player{nn, rating: DEFAULT_RATING}).collect();
