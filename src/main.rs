@@ -13,14 +13,14 @@ pub mod simple_rng;
 use std::{collections::HashMap, str::FromStr};
 
 use chess::*;
-// use rand::{Rng, prelude::ThreadRng, thread_rng};
+use rand::{Rng, prelude::ThreadRng, thread_rng};
 // use arrayfire::{device_count, device_info, info, set_device};
 
 use crate::{
     utils_io::*,
     neural_network::*,
     // activation_functions::get_random_activation_function,
-    simple_rng::SimpleRng,
+    // simple_rng::SimpleRng,
 };
 
 
@@ -34,11 +34,11 @@ const ALLOW_WIN_BY_POINTS: bool = true;
 const MOVES_LIMIT: u32 = 300;
 
 // additional neuron for choosing move a bit random
-const USE_NOISE: bool = true;
+const USE_NOISE: bool = false;
 const NEURONS_IN_FIRST_LAYER: usize = if !USE_NOISE { 64 } else { 65 };
 
-const SHOW_TRAINING_LOGS: bool = true;
-const PLAY_WITH_NN_AFTER_TRAINING: bool = true;
+const SHOW_TRAINING_LOGS: bool = false;
+const PLAY_WITH_NN_AFTER_TRAINING: bool = false;
 
 pub enum ComputingUnit {
     CPU,
@@ -52,50 +52,27 @@ pub const COMPUTING_UNIT: ComputingUnit = ComputingUnit::CPU;
 
 fn main() {
     let nn_heights: Vec<usize> = vec![
-        // 64, 700, 600, 500, 400, 300, 200, 100, 1
-        // 64, 100, 100, 100, 100, 100, 100, 1
-        // 64, 60, 40, 20, 10, 1
-        // 64, 10000, 10000, 10000, 1
-        // 64, 1000, 1000, 1000, 1
-        // 64, 200, 200, 200, 1
-        // 64, 100, 100, 100, 1
-        64, 300, 70, 20, 1 // for test
-        // 64, 60, 40, 20, 1
-        // 64, 20, 20, 20, 1
-        // 64, 15, 20, 11, 1
-        // 64, 200, 200, 1
-        // 64, 100, 100, 1
-        // 64, 10, 10, 1 // for bench
-        // 64, 1000, 1
-        // 64, 100, 1
-        // 64, 10, 1
-        // 64, 1
+        // 700, 600, 500, 400, 300, 200, 100
+        // 100, 100, 100, 100, 100, 100
+        // 60, 40, 20, 10
+        // 10000, 10000, 10000
+        // 1000, 1000, 1000
+        // 200, 200, 200
+        // 100, 100, 100
+        300, 70, 20 // for bench by `time`
+        // 60, 40, 20
+        // 20, 20, 20
+        // 15, 20, 11
+        // 200, 200
+        // 100, 100
+        // 10, 10 // for bench by rust `#[bench]`
+        // 10, 7  // for debug
+        // 1000
+        // 100
+        // 10
+        // // none :D
     ];
 
-    // TODO: refactor so i dont have to write 64 at begin and 1 at the end
-
-    let nn_heights: Vec<usize> = {
-        let mut nn_heights_new: Vec<usize> = nn_heights;
-        if USE_NOISE {
-            nn_heights_new[0] += 1;
-        }
-        nn_heights_new
-    };
-
-    assert!(
-        nn_heights.len() >= 2,
-        "nn_heights.len()={}, should be >= 2, else its useless", nn_heights.len()
-    );
-    assert_eq!(
-        nn_heights[0],
-        NEURONS_IN_FIRST_LAYER,
-        "nn_heights[0]={}, should be == 64or65, else its impossible", nn_heights[0]
-    );
-    assert_eq!(
-        nn_heights[nn_heights.len()-1],
-        1,
-        "nn_heights[last]={}, should be == 1, else its useless", nn_heights[nn_heights.len()-1]
-    );
     assert!(
         PLAYERS_AMOUNT > 1,
         "PLAYERS_AMOUNT={} should be > 1, else its useless",
@@ -116,15 +93,21 @@ fn main() {
         }
     }
 
-    // let mut rng: ThreadRng = thread_rng();
-    let mut rng: SimpleRng = SimpleRng::new(0);
+    let mut rng: ThreadRng = thread_rng();
+    // let mut rng: SimpleRng = SimpleRng::new(0);
 
     let (weight_min, weight_max): (f32, f32) = (-1.0, 1.0);
     let (consts_min, consts_max): (f32, f32) = (-1.0, 1.0);
 
     let mut nns: Vec<NeuralNetwork> = (0..PLAYERS_AMOUNT)
         .map( |_i|
-            NeuralNetwork::with_random(&nn_heights, weight_min, weight_max, consts_min, consts_max, &mut rng)
+            NeuralNetwork::with_random(
+                NEURONS_IN_FIRST_LAYER,
+                &nn_heights,
+                weight_min, weight_max,
+                consts_min, consts_max,
+                &mut rng
+            )
             // NeuralNetwork::with_consts(&nn_heights, 1.0, 1.0, activation_functions::ActivationFunction::Sigmoid))
             // NeuralNetwork::with_smart_random(&nn_heights, &mut rng))
         )
@@ -156,10 +139,10 @@ fn main() {
             let evolution_factor: f32 = generation_to_evolve_factor(generation, GENERATIONS);
             if SHOW_TRAINING_LOGS {
                 println!("evolving with evolution_factor = {}%", 100.0*evolution_factor);
-            }
-
-            let approx_neurons_to_evolve: f32 = evolution_factor*((sum_vec(&nn_heights)-nn_heights[0]) as f32);
-            if SHOW_TRAINING_LOGS {
+                let total_neurons: u64 = NEURONS_IN_FIRST_LAYER as u64
+                    + nn_heights.iter().map(|&h| h as u64).sum::<u64>()
+                    + 1;
+                let approx_neurons_to_evolve: f32 = evolution_factor * (total_neurons as f32);
                 println!("approx neurons_to_evolve = {approx_neurons_to_evolve}");
             }
 
@@ -172,7 +155,13 @@ fn main() {
             let len = nns.len();
             // nns[len-2] = NeuralNetwork::with_consts(&nn_heights, 0.01, 0.0, get_random_activation_function());
             // nns[len-1] = NeuralNetwork::with_smart_random(&nn_heights);
-            nns[len-1] = NeuralNetwork::with_random(&nn_heights, weight_min, weight_max, consts_min, consts_max, &mut rng);
+            nns[len-1] = NeuralNetwork::with_random(
+                NEURONS_IN_FIRST_LAYER,
+                &nn_heights,
+                weight_min, weight_max,
+                consts_min, consts_max,
+                &mut rng
+            );
         }
 
         if nns_old[0] == nns[0] && generation > 0 {
@@ -337,7 +326,7 @@ const PIECES_VALUE: PiecesValue = PiecesValue {
     king:   20.0,
 };
 
-fn board_to_vec_for_nn(board: &Board, rng: &mut SimpleRng) -> Vec<f32> {
+fn board_to_vec_for_nn(board: &Board, rng: &mut ThreadRng) -> Vec<f32> {
     let mut input_for_nn: Vec<f32> = vec![0.0; NEURONS_IN_FIRST_LAYER];
     let mut n: usize = 0;
     // TODO: optimize
@@ -399,10 +388,10 @@ fn board_to_vec_for_nn(board: &Board, rng: &mut SimpleRng) -> Vec<f32> {
     input_for_nn
 }
 
-fn analyze(board: &Board, nn: &NeuralNetwork, rng: &mut SimpleRng) -> f32 {
+fn analyze(board: &Board, nn: &NeuralNetwork, rng: &mut ThreadRng) -> f32 {
     let input_for_nn: Vec<f32> = board_to_vec_for_nn(board, rng);
     // println!("input_for_nn = {:?}", array_board);
-    nn.process_input(&input_for_nn)[0]
+    nn.process_input(&input_for_nn)
 }
 
 
@@ -482,11 +471,8 @@ fn play_game(
     nn_white: &NeuralNetwork,
     nn_black: &NeuralNetwork,
     config: PlayGameConfig,
-    rng: &mut SimpleRng,
+    rng: &mut ThreadRng,
 ) -> (EnumWhoWon, Option<String>) {
-    // assert_eq!(nn_white.weight[0].len(), NEURONS_IN_FIRST_LAYER);
-    // assert_eq!(nn_black.weight[0].len(), NEURONS_IN_FIRST_LAYER);
-
     let mut move_number: u32 = 0;
 
     // let mut board_now = Board::default();
@@ -705,16 +691,6 @@ fn play_game(
 
 
 
-fn sum_vec(vec: &Vec<usize>) -> usize {
-    let mut res: usize = 0;
-    for item in vec {
-        res += item;
-    }
-    res
-}
-
-
-
 #[derive(Clone, Debug)]
 struct Player {
     pub nn: NeuralNetwork,
@@ -728,7 +704,7 @@ fn logistic(x: f32) -> f32 {
 fn play_tournament(
     nns: Vec<NeuralNetwork>,
     gen: u32,
-    rng: &mut SimpleRng,
+    rng: &mut ThreadRng,
 ) -> Vec<NeuralNetwork> {
     const DEFAULT_RATING: f32 = 1000.0;
     let mut players: Vec<Player> = nns.into_iter().map(|nn| Player{nn, rating: DEFAULT_RATING}).collect();
@@ -936,6 +912,7 @@ fn play_tournament(
 
     players_sorted.into_iter().map(|p| p.nn).collect()
 }
+
 
 
 

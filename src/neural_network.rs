@@ -2,22 +2,23 @@
 
 use std::fmt;
 
-// use rand::{Rng, prelude::ThreadRng};
+use rand::{Rng, prelude::ThreadRng};
 // use arrayfire::{Array, Dim4, matmul, div, constant, exp, sign, abs, sqrt};
 
 use crate::{
     activation_functions::*,
     ComputingUnit,
     COMPUTING_UNIT,
-    // NEURONS_IN_FIRST_LAYER,
-    simple_rng::SimpleRng,
+    NEURONS_IN_FIRST_LAYER,
+    // simple_rng::SimpleRng,
 };
 
 
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct NeuralNetwork {
-    // TODO: rewrite to flat `Vec<f32>` -> `[f32; N]`
+    // TODO optimization?: rewrite to flat `Vec<f32>` -> `[f32; N]`
+    input_len: usize,
     weight: Vec<Vec<Vec<f32>>>,
     consts: Vec<Vec<f32>>,
     activation_function: ActivationFunction,
@@ -28,43 +29,49 @@ impl NeuralNetwork {
         self.activation_function
     }
 
-    pub fn new(heights: &Vec<usize>) -> Self {
+    pub fn new(input_len: usize, heights: &Vec<usize>) -> Self {
+        let heights: Vec<usize> = {
+            let mut heights: Vec<usize> = heights.to_vec();
+            heights.push(1); // assuming that output size is 1
+            heights
+        };
         let layers = heights.len();
         // set layers amount:
         let mut nn: NeuralNetwork = NeuralNetwork {
+            input_len,
             weight: vec![vec![]; layers],
             consts: vec![vec![]; layers],
             activation_function: ActivationFunction::Sigmoid,
         };
         // set up weights for every layer:
         for l in 0..layers {
-            nn.weight[l] = Vec::with_capacity(heights[l]);
-            nn.consts[l] = Vec::with_capacity(heights[l]);
-            for _ in 0..heights[l] {
-                nn.consts[l].push(0.0);
-                nn.weight[l].push(vec![
+            let height: usize = heights[l];
+            nn.consts[l] = vec![0.0; height];
+            nn.weight[l] = vec![
+                vec![
                     1.0;
-                    if l == 0 {
-                        // set weights size = 0 for every neuron in first (0) layer
+                    match l {
                         // set zero's layer connections amount
-                        0
-                    } else {
+                        0 => { input_len }
+                        // layers-1 => {  }
                         // set weights size for neurons in all other layers
-                        heights[l-1]
+                        _ => { heights[l-1] }
                     }
-                ]);
-            }
+                ];
+                height
+            ];
         }
         nn
     }
 
     pub fn with_consts(
+        input_len: usize,
         heights: &Vec<usize>,
         weight: f32,
         consts: f32,
         activation_function: ActivationFunction,
     ) -> Self {
-        let mut nn = NeuralNetwork::new(heights);
+        let mut nn = NeuralNetwork::new(input_len, heights);
         nn.activation_function = activation_function;
         for l in 0..nn.weight.len() {
             for h in 0..nn.weight[l].len() {
@@ -78,18 +85,19 @@ impl NeuralNetwork {
     }
 
     pub fn with_random(
+        input_len: usize,
         heights: &Vec<usize>,
         weight_min: f32, weight_max: f32,
         consts_min: f32, consts_max: f32,
-        rng: &mut SimpleRng,
+        rng: &mut ThreadRng,
     ) -> Self {
-        let mut nn = NeuralNetwork::new(heights);
+        let mut nn = NeuralNetwork::new(input_len, heights);
         nn.activation_function = get_random_activation_function(rng);
         for l in 0..nn.weight.len() {
             for h in 0..nn.weight[l].len() {
-                nn.consts[l][h] = rng.gen_range(consts_min..consts_max);
+                nn.consts[l][h] = rng.gen_range(consts_min..=consts_max);
                 for c in 0..nn.weight[l][h].len() {
-                    nn.weight[l][h][c] = rng.gen_range(weight_min..weight_max);
+                    nn.weight[l][h][c] = rng.gen_range(weight_min..=weight_max);
                 }
             }
         }
@@ -97,16 +105,19 @@ impl NeuralNetwork {
     }
 
     #[deprecated]
-    pub fn with_smart_random(heights: &Vec<usize>, rng: &mut SimpleRng) -> Self {
-        let mut nn = NeuralNetwork::new(heights);
+    pub fn with_smart_random(
+        input_len: usize,
+        heights: &Vec<usize>,
+        rng: &mut ThreadRng
+    ) -> Self {
+        let mut nn = NeuralNetwork::new(input_len, heights);
         nn.activation_function = get_random_activation_function(rng);
         for l in 1..nn.weight.len() {
             for h in 0..nn.weight[l].len() {
-                nn.consts[l][h] = rng.gen_range(-2.0..2.0_f32).powi(2);
+                nn.consts[l][h] = rng.gen_range(-2.0..=2.0_f32).powi(2);
+                let amplitude: f32 = 1.0 / (nn.weight[l-1].len() as f32);
                 for c in 0..nn.weight[l][h].len() {
-                    nn.weight[l][h][c] = rng.gen_range(
-                        -1.0/(nn.weight[l-1].len() as f32)..1.0/(nn.weight[l-1].len() as f32)
-                    );
+                    nn.weight[l][h][c] = rng.gen_range(-amplitude..=amplitude);
                 }
             }
         }
@@ -114,45 +125,45 @@ impl NeuralNetwork {
     }
 
 
-    pub fn process_input(&self, input: &Vec<f32>) -> Vec<f32> {
-        // assert_eq!(if !USE_65_NEURONS {64} else {65}, input.len());
+    pub fn process_input(&self, input: &Vec<f32>) -> f32 {
+        debug_assert_eq!(NEURONS_IN_FIRST_LAYER, input.len());
         match COMPUTING_UNIT {
             ComputingUnit::CPU => {
                 self.process_input_cpu(input)
             }
             ComputingUnit::GPU => {
                 // self.process_input_gpu(input)
-                todo!("plz enable GPU")
+                todo!("plz enable `GPU`")
             }
         }
     }
 
 
-    fn process_input_cpu(&self, input: &Vec<f32>) -> Vec<f32> {
+    fn process_input_cpu(&self, input: &Vec<f32>) -> f32 {
+        let mut input_for_next_layer: Vec<f32> = input.to_vec();
         let layers = self.weight.len();
-        let mut input: Vec<f32> = input.to_vec();
-        for l in 1..layers {
-            let mut res: Vec<f32> = Vec::with_capacity(self.weight[l].len());
-            for h in 0..self.weight[l].len() {
+        for l in 0..layers {
+            let height: usize = self.weight[l].len();
+            let mut res: Vec<f32> = Vec::with_capacity(height);
+            for h in 0..height {
                 let mut sum: f32 = 0.0;
-                // assert_eq!(self.weight[l-1].len(), self.weight[l][h].len());
+                debug_assert_eq!(if l > 0 { self.weight[l-1].len() } else { input.len() }, self.weight[l][h].len());
+                // let connections: usize = if l > 0 { self.weight[l-1].len() } else { input.len() };
+                let connections: usize = input_for_next_layer.len();
                 // for c in 0..self.weight[l][h].len() {
-                for c in 0..self.weight[l-1].len() {
-                    sum += self.weight[l][h][c] * input[c];
+                for c in 0..connections {
+                    sum += self.weight[l][h][c] * input_for_next_layer[c];
                 }
+                // or maybe try `+= const` after activation_function?
                 sum += self.consts[l][h];
-                if l != layers - 1 {
-                    sum = calc_activation_function(sum, self.activation_function);
-                }
-                // sum = 1.0 / (1.0 + (-sum).exp());
-                // sum = if sum >= 0.0 { 1.0 } else { 0.0 };
-                // sum = if sum >= 0.0 { sum } else { 0.0 };
+                sum = calc_activation_function(sum, self.activation_function);
                 res.push(sum);
             }
-            // assert_eq!(input.len(), self.weight[l-1].len());
-            input = res;
+            input_for_next_layer = res;
+            debug_assert_eq!(input_for_next_layer.len(), self.weight[l].len());
         }
-        return input;
+        // for optimization purposes result is `f32` instead of `Vec<f32>`
+        return input_for_next_layer[0];
     }
 
 
@@ -234,8 +245,8 @@ impl NeuralNetwork {
         res
     }
 
-    fn choose_random_neuron(&self, rng: &mut SimpleRng) -> (usize, usize) {
-        let neuron_id_to_evolve: usize = rng.gen_range_usize(0..self.get_total_neurons());
+    fn choose_random_neuron(&self, rng: &mut ThreadRng) -> (usize, usize) {
+        let neuron_id_to_evolve: usize = rng.gen_range(0..self.get_total_neurons());
         let mut l: usize = 1;
         let mut h: usize = 0;
         for _j in 0..neuron_id_to_evolve {
@@ -250,12 +261,12 @@ impl NeuralNetwork {
         (l, h)
     }
 
-    pub fn evolve(&mut self, evolution_factor: f32, rng: &mut SimpleRng) {
+    pub fn evolve(&mut self, evolution_factor: f32, rng: &mut ThreadRng) {
         assert!(0.0 <= evolution_factor && evolution_factor <= 1.0);
 
         let total_neurons: u32 = self.get_total_neurons() as u32;
         let neurons_to_evolve: u32 = ((total_neurons as f32) * evolution_factor) as u32;
-        let neurons_to_evolve: u32 = 1 + rng.gen_range_u32(0..neurons_to_evolve);
+        let neurons_to_evolve: u32 = 1 + rng.gen_range(0..=neurons_to_evolve);
         // println!("total_neurons = {}", total_neurons);
         // println!("neurons_to_evolve = {}", neurons_to_evolve);
 
@@ -268,11 +279,11 @@ impl NeuralNetwork {
 
             let total_weights: usize = self.weight[l][h].len();
             let weights_to_evolve: u32 = ((total_weights as f32) * evolution_factor) as u32;
-            let weights_to_evolve: u32 = 1 + rng.gen_range_u32(0..weights_to_evolve);
+            let weights_to_evolve: u32 = 1 + rng.gen_range(0..=weights_to_evolve);
             // println!("total_weights = {}", total_weights);
             // println!("weights_to_evolve = {}", weights_to_evolve);
 
-            let sign: f32 = if rng.gen_bool(evolution_factor/2.0) { -1.0 } else { 1.0 };
+            let sign: f32 = if rng.gen_bool((evolution_factor/2.0) as f64) { -1.0 } else { 1.0 };
             self.consts[l][h] *= sign;
 
             if rng.gen_bool(0.5) {
@@ -288,9 +299,9 @@ impl NeuralNetwork {
 
             for _ in 0..weights_to_evolve {
                 // println!("old value: {}", self.weights[h]);
-                let c: usize = rng.gen_range_usize(0..total_weights);
+                let c: usize = rng.gen_range(0..total_weights);
 
-                let sign: f32 = if rng.gen_bool(evolution_factor/2.0) { -1.0 } else { 1.0 };
+                let sign: f32 = if rng.gen_bool((evolution_factor/2.0) as f64) { -1.0 } else { 1.0 };
                 self.weight[l][h][c] *= sign;
 
                 if rng.gen_bool(0.5) {
@@ -328,5 +339,170 @@ impl fmt::Display for NeuralNetwork {
 
         write!(f, "{}", res)
     }
+}
+
+
+
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn new_manual() {
+        assert_eq!(
+            NeuralNetwork::new(4, &vec![3, 2]),
+            NeuralNetwork {
+                input_len: 4,
+                weight: vec![
+                    vec![
+                        vec![1.0, 1.0, 1.0, 1.0],
+                        vec![1.0, 1.0, 1.0, 1.0],
+                        vec![1.0, 1.0, 1.0, 1.0],
+                    ],
+                    vec![
+                        vec![1.0, 1.0, 1.0],
+                        vec![1.0, 1.0, 1.0],
+                    ],
+                    vec![
+                        vec![1.0, 1.0],
+                    ],
+                ],
+                consts: vec![
+                    vec![0.0, 0.0, 0.0],
+                    vec![0.0, 0.0],
+                    vec![0.0],
+                ],
+                activation_function: ActivationFunction::Sigmoid
+            }
+        );
+    }
+
+    #[test]
+    fn new_auto() {
+        let test_cases: Vec<(usize, Vec<usize>)> = vec![
+            (4, vec![3, 2]),
+            (10, vec![8, 6, 4, 2]),
+            (64, vec![300, 70, 20, 5]),
+            (1000, vec![800, 600, 400, 200]),
+            (1000, vec![800, 900, 600, 700, 400, 500, 200, 300]),
+            (1000, vec![900, 800, 700, 600, 500, 400, 300, 200, 100]),
+            (1111, vec![999, 888, 777, 666, 555, 444, 333, 222, 111]),
+        ];
+        for test_case in test_cases {
+            let (input_len, heights) = test_case;
+            let nn: NeuralNetwork = NeuralNetwork::new(input_len, &heights);
+            let layers: usize = heights.len() + 1;
+            assert_eq!(layers, nn.weight.len());
+            assert_eq!(layers, nn.consts.len());
+            for l in 0..layers {
+                let height: usize = if l != layers-1 { heights[l] } else { 1 };
+                assert_eq!(height, nn.consts[l].len());
+                assert_eq!(height, nn.weight[l].len());
+                let connections: usize = match l {
+                    0 => { input_len }
+                    l if l == layers => { 1 }
+                    _ => { heights[l-1] }
+                };
+                for h in 0..height {
+                    assert_eq!(connections, nn.weight[l][h].len());
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn with_consts() {
+        let input_len: usize = 5;
+        let heights: Vec<usize> = vec![3];
+        let nn: NeuralNetwork = NeuralNetwork::with_consts(
+            input_len,
+            &heights,
+            1.45,
+            4.2,
+            ActivationFunction::SignSqrtAbs,
+        );
+        assert_eq!(
+            nn,
+            NeuralNetwork {
+                input_len,
+                weight: vec![
+                    vec![
+                        vec![1.45, 1.45, 1.45, 1.45, 1.45],
+                        vec![1.45, 1.45, 1.45, 1.45, 1.45],
+                        vec![1.45, 1.45, 1.45, 1.45, 1.45],
+                    ],
+                    vec![
+                        vec![1.45, 1.45, 1.45],
+                    ],
+                ],
+                consts: vec![
+                    vec![4.2, 4.2, 4.2],
+                    vec![4.2],
+                ],
+                activation_function: ActivationFunction::SignSqrtAbs
+            }
+        );
+    }
+
+    #[test]
+    fn process_input_cpu() {
+        let input_len: usize = 5;
+        let heights: Vec<usize> = vec![3]; // -> [5, 3, 1]
+        let nn: NeuralNetwork = NeuralNetwork::with_consts(
+            input_len,
+            &heights,
+            1.45,
+            4.2,
+            ActivationFunction::SignSqrtAbs,
+        );
+        // layer 0 (input): inp0, inp1, inp2, inp3, inp4
+        //     res0 = ssa(4.2 + inp0*1.45 + inp1*1.45 + inp2*1.45 + inp3*1.45 + inp4*1.45)
+        //     res1 = ssa(4.2 + inp0*1.45 + inp1*1.45 + inp2*1.45 + inp3*1.45 + inp4*1.45)
+        //     res2 = ssa(4.2 + inp0*1.45 + inp1*1.45 + inp2*1.45 + inp3*1.45 + inp4*1.45)
+        //     inp_for_next_layer = [res0, res1, res2]
+        // layer 1 (inner): inp0, inp1, inp2
+        //     res0 = ssa(4.2 + inp0*1.45 + inp1*1.45 + inp2*1.45)
+        //     inp_for_next_layer = [res0]
+        // layer 2 (output): inp0 -> result/output
+        //
+        // this results can be double checked using python3:
+        // ```python3
+        // >>> sign = lambda x: 0.0 if x==0 else (-1.0 if x<0 else 1.0)
+        // >>> from math import sqrt
+        // >>> ssa = lambda x: sign(x) * sqrt(abs(x))
+        // >>> 0.0
+        // 0.0
+        // >>> ssa(4.2  +  1.45 * _ * 5)
+        // 2.04939015319192
+        // >>> ssa(4.2  +  1.45 * _ * 3)
+        // 3.6214426913020246 # this is expected result
+        // >>>
+        // >>> 1.0
+        // 1.0
+        // >>> ssa(4.2  +  1.45 * _ * 5)
+        // 3.383784863137726
+        // >>> ssa(4.2  +  1.45 * _ * 3)
+        // 4.349651038261473 # this is expected result
+        // ```
+        assert_eq!(3.6214426913020246, nn.process_input_cpu(&vec![0.0, 0.0, 0.0, 0.0, 0.0]));
+        assert_eq!(4.349651038261473 , nn.process_input_cpu(&vec![1.0, 1.0, 1.0, 1.0, 1.0]));
+        assert_eq!(4.79696998427992  , nn.process_input_cpu(&vec![2.0, 2.0, 2.0, 2.0, 2.0]));
+        assert_eq!(5.645009901861524 , nn.process_input_cpu(&vec![5.0, 5.0, 5.0, 5.0, 5.0]));
+
+        assert_eq!(3.973780813934329 , nn.process_input_cpu(&vec![2.0, 0.0, 0.0, 0.0, 0.0]));
+        assert_eq!(3.973780813934329 , nn.process_input_cpu(&vec![0.0, 2.0, 0.0, 0.0, 0.0]));
+        assert_eq!(3.973780813934329 , nn.process_input_cpu(&vec![0.0, 0.0, 2.0, 0.0, 0.0]));
+        assert_eq!(3.973780813934329 , nn.process_input_cpu(&vec![0.0, 0.0, 0.0, 2.0, 0.0]));
+        assert_eq!(3.973780813934329 , nn.process_input_cpu(&vec![0.0, 0.0, 0.0, 0.0, 2.0]));
+    }
+
+    #[ignore]
+    #[test]
+    fn process_input_gpu() {
+        panic!("plz enable `GPU`");
+    }
+
 }
 

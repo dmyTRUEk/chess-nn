@@ -1,7 +1,7 @@
 /// Activation Functions
 
-// use rand::{Rng, prelude::ThreadRng};
-use crate::simple_rng::SimpleRng;
+use rand::{Rng, prelude::ThreadRng};
+// use crate::simple_rng::SimpleRng;
 
 
 
@@ -52,8 +52,8 @@ pub fn calc_activation_function(x: f32, activation_function: ActivationFunction)
 }
 
 // TODO: pass &mut rng
-pub fn get_random_activation_function(rng: &mut SimpleRng) -> ActivationFunction {
-    match rng.gen_range_usize(0..3) {
+pub fn get_random_activation_function(rng: &mut ThreadRng) -> ActivationFunction {
+    match rng.gen_range(0..3) {
         0 => ActivationFunction::Sigmoid,
         1 => ActivationFunction::Arctan,
         2 => ActivationFunction::SignSqrtAbs,

@@ -1,6 +1,6 @@
 [package]
 name = "chess_nn"
-version = "0.4.1"
+version = "0.5.0"
 authors = ["dmyTRUEk"]
 edition = "2021"
 
@@ -15,8 +15,8 @@ panic = "abort"
 # debuginfo = 0
 
 [dependencies]
-#arrayfire = "3.8.0"
-#chess = "3.1.1"
-#chess = { git = "https://github.com/jordanbray/chess/commit/6693cacb2e77297b40349096f1aabbdb7baf0f66?branch=6693cacb2e77297b40349096f1aabbdb7baf0f66&diff=split" }
 chess = { git = "https://github.com/jordanbray/chess", rev = "6693cac" }
-#rand = "0.8.5"
+#chess = { git = "https://github.com/jordanbray/chess/commit/6693cacb2e77297b40349096f1aabbdb7baf0f66?branch=6693cacb2e77297b40349096f1aabbdb7baf0f66&diff=split" }
+#chess = "3.1.1"
+rand = "0.8.5"
+#arrayfire = "3.8.0"
