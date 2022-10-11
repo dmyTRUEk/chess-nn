@@ -9,7 +9,7 @@ use crate::{
     activation_functions::*,
     ComputingUnit,
     COMPUTING_UNIT,
-    NEURONS_IN_FIRST_LAYER,
+    // NEURONS_IN_FIRST_LAYER,
     // simple_rng::SimpleRng,
 };
 
@@ -125,8 +125,8 @@ impl NeuralNetwork {
     }
 
 
-    pub fn process_input(&self, input: &Vec<f32>) -> f32 {
-        debug_assert_eq!(NEURONS_IN_FIRST_LAYER, input.len());
+    pub fn process_input<const N: usize>(&self, input: &[f32; N]) -> f32 {
+        // debug_assert_eq!(NEURONS_IN_FIRST_LAYER, input.len());
         match COMPUTING_UNIT {
             ComputingUnit::CPU => {
                 self.process_input_cpu(input)
@@ -139,7 +139,7 @@ impl NeuralNetwork {
     }
 
 
-    fn process_input_cpu(&self, input: &Vec<f32>) -> f32 {
+    fn process_input_cpu<const N: usize>(&self, input: &[f32; N]) -> f32 {
         let mut input_for_next_layer: Vec<f32> = input.to_vec();
         let layers = self.weight.len();
         for l in 0..layers {
@@ -486,16 +486,16 @@ mod tests {
         // >>> ssa(4.2  +  1.45 * _ * 3)
         // 4.349651038261473 # this is expected result
         // ```
-        assert_eq!(3.6214426913020246, nn.process_input_cpu(&vec![0.0, 0.0, 0.0, 0.0, 0.0]));
-        assert_eq!(4.349651038261473 , nn.process_input_cpu(&vec![1.0, 1.0, 1.0, 1.0, 1.0]));
-        assert_eq!(4.79696998427992  , nn.process_input_cpu(&vec![2.0, 2.0, 2.0, 2.0, 2.0]));
-        assert_eq!(5.645009901861524 , nn.process_input_cpu(&vec![5.0, 5.0, 5.0, 5.0, 5.0]));
+        assert_eq!(3.6214426913020246, nn.process_input_cpu(&[0.0, 0.0, 0.0, 0.0, 0.0]));
+        assert_eq!(4.349651038261473 , nn.process_input_cpu(&[1.0, 1.0, 1.0, 1.0, 1.0]));
+        assert_eq!(4.79696998427992  , nn.process_input_cpu(&[2.0, 2.0, 2.0, 2.0, 2.0]));
+        assert_eq!(5.645009901861524 , nn.process_input_cpu(&[5.0, 5.0, 5.0, 5.0, 5.0]));
 
-        assert_eq!(3.973780813934329 , nn.process_input_cpu(&vec![2.0, 0.0, 0.0, 0.0, 0.0]));
-        assert_eq!(3.973780813934329 , nn.process_input_cpu(&vec![0.0, 2.0, 0.0, 0.0, 0.0]));
-        assert_eq!(3.973780813934329 , nn.process_input_cpu(&vec![0.0, 0.0, 2.0, 0.0, 0.0]));
-        assert_eq!(3.973780813934329 , nn.process_input_cpu(&vec![0.0, 0.0, 0.0, 2.0, 0.0]));
-        assert_eq!(3.973780813934329 , nn.process_input_cpu(&vec![0.0, 0.0, 0.0, 0.0, 2.0]));
+        assert_eq!(3.973780813934329 , nn.process_input_cpu(&[2.0, 0.0, 0.0, 0.0, 0.0]));
+        assert_eq!(3.973780813934329 , nn.process_input_cpu(&[0.0, 2.0, 0.0, 0.0, 0.0]));
+        assert_eq!(3.973780813934329 , nn.process_input_cpu(&[0.0, 0.0, 2.0, 0.0, 0.0]));
+        assert_eq!(3.973780813934329 , nn.process_input_cpu(&[0.0, 0.0, 0.0, 2.0, 0.0]));
+        assert_eq!(3.973780813934329 , nn.process_input_cpu(&[0.0, 0.0, 0.0, 0.0, 2.0]));
     }
 
     #[ignore]

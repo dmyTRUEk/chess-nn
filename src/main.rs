@@ -8,11 +8,27 @@ pub mod utils_io;
 // pub mod utils_hashmap;
 pub mod neural_network;
 pub mod activation_functions;
-pub mod simple_rng;
+// pub mod simple_rng;
 
-use std::{collections::HashMap, str::FromStr};
+use std::{
+    collections::HashMap,
+    str::FromStr,
+};
 
-use chess::*;
+use chess::{
+    Action,
+    Board,
+    BoardBuilder,
+    ChessMove,
+    Color,
+    File,
+    Game,
+    GameResult,
+    MoveGen,
+    Piece,
+    Rank,
+    Square,
+};
 use rand::{Rng, prelude::ThreadRng, thread_rng};
 // use arrayfire::{device_count, device_info, info, set_device};
 
@@ -66,7 +82,7 @@ fn main() {
         // 200, 200
         // 100, 100
         // 10, 10 // for bench by rust `#[bench]`
-        // 10, 7  // for debug
+        // 10, 7  // for debug / for test
         // 1000
         // 100
         // 10
@@ -225,7 +241,7 @@ fn main() {
 const MOVES_NOT_PROVIDED: &str = "moves not provided";
 
 fn fen_to_human_viewable(fen: String, beautiful_output: bool) -> String {
-    let mut res: String = "".to_string();
+    let mut res: String = String::new();
     res += &"\n".to_string();
     for (_i, c) in fen.chars().enumerate() {
         if c == ' ' {
@@ -287,109 +303,112 @@ fn board_to_human_viewable(board: Board, beautiful_output: bool) -> String {
 
 
 
-// enum PiecesValue {
-//     Pawn,
-//     Knight,
-//     Bishop,
-//     Rook,
-//     Queen,
-//     King,
-// }
-// impl PiecesValue {
-//     #[inline(always)]
-//     fn value(&self) -> f32 {
-//         match self {
-//             PiecesValue::Pawn   => { 1.0 }
-//             PiecesValue::Knight => { 2.5 }
-//             PiecesValue::Bishop => { 3.0 }
-//             PiecesValue::Rook   => { 5.0 }
-//             PiecesValue::Queen  => { 7.0 }
-//             PiecesValue::King   => { 20.0 }
-//         }
-//     }
-// }
+#[allow(non_snake_case)]
+mod PiecesValue {
+    pub const NONE  : f32 = 0.0;
 
-struct PiecesValue {
-    pub pawn: f32,
-    pub knight: f32,
-    pub bishop: f32,
-    pub rook: f32,
-    pub queen: f32,
-    pub king: f32,
+    pub const PAWN  : f32 = 1.0;
+    pub const KNIGHT: f32 = 2.7;
+    pub const BISHOP: f32 = 3.0;
+    pub const ROOK  : f32 = 5.0;
+    pub const QUEEN : f32 = 7.0;
+    pub const KING  : f32 = 15.0;
+    // pub const PAWN  : f32 = 0.1;
+    // pub const KNIGHT: f32 = 0.2;
+    // pub const BISHOP: f32 = 0.4;
+    // pub const ROOK  : f32 = 0.6;
+    // pub const QUEEN : f32 = 0.8;
+    // pub const KING  : f32 = 1.0;
 }
-const PIECES_VALUE: PiecesValue = PiecesValue {
-    pawn:   1.0,
-    knight: 2.7,
-    bishop: 3.0,
-    rook:   5.0,
-    queen:  9.0,
-    king:   20.0,
-};
 
-fn board_to_vec_for_nn(board: &Board, rng: &mut ThreadRng) -> Vec<f32> {
-    let mut input_for_nn: Vec<f32> = vec![0.0; NEURONS_IN_FIRST_LAYER];
-    let mut n: usize = 0;
-    // TODO: optimize
-    for c in board.to_string().chars() {
-        match c {
-            ' ' => { break }
-            '/' => { continue }
-            '1' => { n += 0 }
-            '2' => { n += 1 }
-            '3' => { n += 2 }
-            '4' => { n += 3 }
-            '5' => { n += 4 }
-            '6' => { n += 5 }
-            '7' => { n += 6 }
-            '8' => { n += 7 }
-            'p' => { input_for_nn[n] = -PIECES_VALUE.pawn }
-            'n' => { input_for_nn[n] = -PIECES_VALUE.knight }
-            'b' => { input_for_nn[n] = -PIECES_VALUE.bishop }
-            'r' => { input_for_nn[n] = -PIECES_VALUE.rook }
-            'q' => { input_for_nn[n] = -PIECES_VALUE.queen }
-            'k' => { input_for_nn[n] = -PIECES_VALUE.king }
-            'P' => { input_for_nn[n] = PIECES_VALUE.pawn }
-            'N' => { input_for_nn[n] = PIECES_VALUE.knight }
-            'B' => { input_for_nn[n] = PIECES_VALUE.bishop }
-            'R' => { input_for_nn[n] = PIECES_VALUE.rook }
-            'Q' => { input_for_nn[n] = PIECES_VALUE.queen }
-            'K' => { input_for_nn[n] = PIECES_VALUE.king }
+fn board_to_array_for_nn<const N: usize>(board: &Board, rng: &mut ThreadRng) -> [f32; N] {
+    let mut input_for_nn: [f32; N] = [0.0; N];
+    let board_builder: BoardBuilder = board.into();
 
-            // 'p' => { input_for_nn[n] = -PiecesValue::Pawn.value() }
-            // 'n' => { input_for_nn[n] = -PiecesValue::Knight.value() }
-            // 'b' => { input_for_nn[n] = -PiecesValue::Bishop.value() }
-            // 'r' => { input_for_nn[n] = -PiecesValue::Rook.value() }
-            // 'q' => { input_for_nn[n] = -PiecesValue::Queen.value() }
-            // 'k' => { input_for_nn[n] = -PiecesValue::King.value() }
-            // 'P' => { input_for_nn[n] = PiecesValue::Pawn.value() }
-            // 'N' => { input_for_nn[n] = PiecesValue::Knight.value() }
-            // 'B' => { input_for_nn[n] = PiecesValue::Bishop.value() }
-            // 'R' => { input_for_nn[n] = PiecesValue::Rook.value() }
-            // 'Q' => { input_for_nn[n] = PiecesValue::Queen.value() }
-            // 'K' => { input_for_nn[n] = PiecesValue::King.value() }
+    // let side_to_move: Color = board.side_to_move();
 
-            _ => { panic!() }
-        }
-        n += 1;
+    // fn piece_to_value(piece: Piece) -> f32 {
+    //     match piece {
+    //         Piece::Pawn   => { PiecesValue::PAWN }
+    //         Piece::Knight => { PiecesValue::KNIGHT }
+    //         Piece::Bishop => { PiecesValue::BISHOP }
+    //         Piece::Rook   => { PiecesValue::ROOK }
+    //         Piece::Queen  => { PiecesValue::QUEEN }
+    //         Piece::King   => { PiecesValue::KING }
+    //     }
+    // }
+
+    for i in 0..64 {
+        let square: Square = unsafe { Square::new(i) };
+        let option_piece_color: Option<(Piece, Color)> = board_builder[square];
+        match option_piece_color {
+            None => { PiecesValue::NONE }
+
+            // Some((Piece::Pawn,   Color::White)) if side_to_move == Color::White => { PiecesValue::PAWN }
+            // Some((Piece::Pawn,   Color::White)) if side_to_move == Color::Black => { -PiecesValue::PAWN }
+            // Some((Piece::Knight, Color::White)) if side_to_move == Color::White => { PiecesValue::KNIGHT }
+            // Some((Piece::Knight, Color::White)) if side_to_move == Color::Black => { -PiecesValue::KNIGHT }
+            // Some((Piece::Bishop, Color::White)) if side_to_move == Color::White => { PiecesValue::BISHOP }
+            // Some((Piece::Bishop, Color::White)) if side_to_move == Color::Black => { -PiecesValue::BISHOP }
+            // Some((Piece::Rook,   Color::White)) if side_to_move == Color::White => { PiecesValue::ROOK }
+            // Some((Piece::Rook,   Color::White)) if side_to_move == Color::Black => { -PiecesValue::ROOK }
+            // Some((Piece::Queen,  Color::White)) if side_to_move == Color::White => { PiecesValue::QUEEN }
+            // Some((Piece::Queen,  Color::White)) if side_to_move == Color::Black => { -PiecesValue::QUEEN }
+            // Some((Piece::King,   Color::White)) if side_to_move == Color::White => { PiecesValue::KING }
+            // Some((Piece::King,   Color::White)) if side_to_move == Color::Black => { -PiecesValue::KING }
+            // Some((Piece::Pawn,   Color::Black)) if side_to_move == Color::White => { PiecesValue::PAWN }
+            // Some((Piece::Pawn,   Color::Black)) if side_to_move == Color::Black => { -PiecesValue::PAWN }
+            // Some((Piece::Knight, Color::Black)) if side_to_move == Color::White => { PiecesValue::KNIGHT }
+            // Some((Piece::Knight, Color::Black)) if side_to_move == Color::Black => { -PiecesValue::KNIGHT }
+            // Some((Piece::Bishop, Color::Black)) if side_to_move == Color::White => { PiecesValue::BISHOP }
+            // Some((Piece::Bishop, Color::Black)) if side_to_move == Color::Black => { -PiecesValue::BISHOP }
+            // Some((Piece::Rook,   Color::Black)) if side_to_move == Color::White => { PiecesValue::ROOK }
+            // Some((Piece::Rook,   Color::Black)) if side_to_move == Color::Black => { -PiecesValue::ROOK }
+            // Some((Piece::Queen,  Color::Black)) if side_to_move == Color::White => { PiecesValue::QUEEN }
+            // Some((Piece::Queen,  Color::Black)) if side_to_move == Color::Black => { -PiecesValue::QUEEN }
+            // Some((Piece::King,   Color::Black)) if side_to_move == Color::White => { PiecesValue::KING }
+            // Some((Piece::King,   Color::Black)) if side_to_move == Color::Black => { -PiecesValue::KING }
+
+            Some((Piece::Pawn,   Color::White)) => { PiecesValue::PAWN }
+            Some((Piece::Knight, Color::White)) => { PiecesValue::KNIGHT }
+            Some((Piece::Bishop, Color::White)) => { PiecesValue::BISHOP }
+            Some((Piece::Rook,   Color::White)) => { PiecesValue::ROOK }
+            Some((Piece::Queen,  Color::White)) => { PiecesValue::QUEEN }
+            Some((Piece::King,   Color::White)) => { PiecesValue::KING }
+            Some((Piece::Pawn,   Color::Black)) => { -PiecesValue::PAWN }
+            Some((Piece::Knight, Color::Black)) => { -PiecesValue::KNIGHT }
+            Some((Piece::Bishop, Color::Black)) => { -PiecesValue::BISHOP }
+            Some((Piece::Rook,   Color::Black)) => { -PiecesValue::ROOK }
+            Some((Piece::Queen,  Color::Black)) => { -PiecesValue::QUEEN }
+            Some((Piece::King,   Color::Black)) => { -PiecesValue::KING }
+
+            // _ => { unreachable!() }
+        };
     }
     // input_for_nn[64] = match board.side_to_move() {
     //     Color::White => { 1.0 }
     //     Color::Black => { -1.0 }
     // };
     if USE_NOISE {
-        input_for_nn[64] = rng.gen_range(-10.0..10.0);
+        input_for_nn[64] = rng.gen_range(-1.0..=1.0_f32);
     }
     if board.side_to_move() == Color::Black {
         input_for_nn.reverse();
         for i in 0..64 {
             input_for_nn[i] *= -1.0;
+
+            // let x: f32 = input_for_nn[i];
+            // let x: u32 = unsafe { std::mem::transmute(x) };
+            // let x: u32 = x ^ (1 << 31);
+            // let x: f32 = unsafe { std::mem::transmute(x) };
+            // input_for_nn[i] = x;
         }
     }
     input_for_nn
 }
 
 fn analyze(board: &Board, nn: &NeuralNetwork, rng: &mut ThreadRng) -> f32 {
-    let input_for_nn: Vec<f32> = board_to_vec_for_nn(board, rng);
+    let input_for_nn: [f32; NEURONS_IN_FIRST_LAYER] = board_to_array_for_nn(board, rng);
     // println!("input_for_nn = {:?}", array_board);
     nn.process_input(&input_for_nn)
 }
@@ -645,18 +664,18 @@ fn play_game(
         // TODO: optimize?
         for c in board_to_human_viewable(game.current_position(), false).to_string().chars().into_iter() {
             match c {
-                'p' => { piece_sum_black += PIECES_VALUE.pawn }
-                'n' => { piece_sum_black += PIECES_VALUE.knight }
-                'b' => { piece_sum_black += PIECES_VALUE.bishop }
-                'r' => { piece_sum_black += PIECES_VALUE.rook }
-                'q' => { piece_sum_black += PIECES_VALUE.queen }
-                // 'k' => { piece_sum_black += PIECES_VALUE.king }
-                'P' => { piece_sum_white += PIECES_VALUE.pawn }
-                'N' => { piece_sum_white += PIECES_VALUE.knight }
-                'B' => { piece_sum_white += PIECES_VALUE.bishop }
-                'R' => { piece_sum_white += PIECES_VALUE.rook }
-                'Q' => { piece_sum_white += PIECES_VALUE.queen }
-                // 'K' => { piece_sum_white += PIECES_VALUE.king }
+                'p' => { piece_sum_black += PiecesValue::PAWN }
+                'n' => { piece_sum_black += PiecesValue::KNIGHT }
+                'b' => { piece_sum_black += PiecesValue::BISHOP }
+                'r' => { piece_sum_black += PiecesValue::ROOK }
+                'q' => { piece_sum_black += PiecesValue::QUEEN }
+                // 'k' => { piece_sum_black += PiecesValue::KING }
+                'P' => { piece_sum_white += PiecesValue::PAWN }
+                'N' => { piece_sum_white += PiecesValue::KNIGHT }
+                'B' => { piece_sum_white += PiecesValue::BISHOP }
+                'R' => { piece_sum_white += PiecesValue::ROOK }
+                'Q' => { piece_sum_white += PiecesValue::QUEEN }
+                // 'K' => { piece_sum_white += PiecesValue::KING }
 
                 // 'p' => { piece_sum_black += PiecesValue::Pawn.value() }
                 // 'n' => { piece_sum_black += PiecesValue::Knight.value() }
