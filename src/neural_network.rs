@@ -287,14 +287,14 @@ impl NeuralNetwork {
             self.consts[l][h] *= sign;
 
             if rng.gen_bool(0.5) {
-                self.consts[l][h] *= (1.0 + evolution_factor).powi(3);
+                self.consts[l][h] *= (1.0 + evolution_factor).powi(2);
             } else {
-                self.consts[l][h] /= (1.0 + evolution_factor).powi(3);
+                self.consts[l][h] /= (1.0 + evolution_factor).powi(2);
             }
             if rng.gen_bool(0.5) {
-                self.consts[l][h] += evolution_factor / 100.0;
+                self.consts[l][h] += evolution_factor / 10.0;
             } else {
-                self.consts[l][h] -= evolution_factor / 100.0;
+                self.consts[l][h] -= evolution_factor / 10.0;
             }
 
             for _ in 0..weights_to_evolve {
@@ -305,14 +305,14 @@ impl NeuralNetwork {
                 self.weight[l][h][c] *= sign;
 
                 if rng.gen_bool(0.5) {
-                    self.weight[l][h][c] *= (1.0 + evolution_factor).powi(3);
+                    self.weight[l][h][c] *= (1.0 + evolution_factor).powi(2);
                 } else {
-                    self.weight[l][h][c] /= (1.0 + evolution_factor).powi(3);
+                    self.weight[l][h][c] /= (1.0 + evolution_factor).powi(2);
                 }
                 if rng.gen_bool(0.5) {
-                    self.weight[l][h][c] += evolution_factor / 100.0;
+                    self.weight[l][h][c] += evolution_factor / 10.0;
                 } else {
-                    self.weight[l][h][c] -= evolution_factor / 100.0;
+                    self.weight[l][h][c] -= evolution_factor / 10.0;
                 }
                 // println!("new value: {}", self.weights[h]);
             }

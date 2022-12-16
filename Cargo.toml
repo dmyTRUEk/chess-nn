@@ -1,6 +1,6 @@
 [package]
 name = "chess_nn"
-version = "0.5.1"
+version = "0.5.2"
 authors = ["dmyTRUEk"]
 edition = "2021"
 

@@ -41,20 +41,20 @@ use crate::{
 
 
 
-const PLAYERS_AMOUNT: usize = 10;
+const PLAYERS_AMOUNT: usize = 20;
 
-const GENERATIONS: u32 = 10;
+const GENERATIONS: u32 = 100;
 const GEN_TO_START_WATCHING: u32 = 300;
 
 const ALLOW_WIN_BY_POINTS: bool = true;
-const MOVES_LIMIT: u32 = 300;
+const MOVES_LIMIT: u32 = 200;
 
 // additional neuron for choosing move a bit random
 const USE_NOISE: bool = false;
 const NEURONS_IN_FIRST_LAYER: usize = if !USE_NOISE { 64 } else { 65 };
 
-const SHOW_TRAINING_LOGS: bool = false;
-const PLAY_WITH_NN_AFTER_TRAINING: bool = false;
+const SHOW_TRAINING_LOGS: bool = true;
+const PLAY_WITH_NN_AFTER_TRAINING: bool = true;
 
 pub enum ComputingUnit {
     CPU,
@@ -75,7 +75,8 @@ fn main() {
         // 1000, 1000, 1000
         // 200, 200, 200
         // 100, 100, 100
-        300, 70, 20 // for bench by `time`
+        // 300, 70, 20 // for bench by `time`
+        200, 50, 10
         // 60, 40, 20
         // 20, 20, 20
         // 15, 20, 11
@@ -86,7 +87,7 @@ fn main() {
         // 1000
         // 100
         // 10
-        // // none :D
+        // // none also possible :D
     ];
 
     assert!(
@@ -100,7 +101,7 @@ fn main() {
             println!("using computing unit: CPU");
         }
         ComputingUnit::GPU => {
-            todo!("plz enable GPU");
+            todo!("update GPU code to current CPU code");
             // println!("using computing unit: GPU");
             // println!("devices avalaible: {}", device_count());
             // set_device(0);
@@ -112,11 +113,11 @@ fn main() {
     let mut rng: ThreadRng = thread_rng();
     // let mut rng: SimpleRng = SimpleRng::new(0);
 
-    let (weight_min, weight_max): (f32, f32) = (-1.0, 1.0);
-    let (consts_min, consts_max): (f32, f32) = (-1.0, 1.0);
+    let (weight_min, weight_max): (f32, f32) = (-10.0, 10.0);
+    let (consts_min, consts_max): (f32, f32) = (-10.0, 10.0);
 
-    let mut nns: Vec<NeuralNetwork> = (0..PLAYERS_AMOUNT)
-        .map( |_i|
+    let mut nns: Vec<NeuralNetwork> =
+        (0..PLAYERS_AMOUNT).map( |_i|
             NeuralNetwork::with_random(
                 NEURONS_IN_FIRST_LAYER,
                 &nn_heights,
@@ -155,7 +156,8 @@ fn main() {
             let evolution_factor: f32 = generation_to_evolve_factor(generation, GENERATIONS);
             if SHOW_TRAINING_LOGS {
                 println!("evolving with evolution_factor = {}%", 100.0*evolution_factor);
-                let total_neurons: u64 = NEURONS_IN_FIRST_LAYER as u64
+                let total_neurons: u64 =
+                    NEURONS_IN_FIRST_LAYER as u64
                     + nn_heights.iter().map(|&h| h as u64).sum::<u64>()
                     + 1;
                 let approx_neurons_to_evolve: f32 = evolution_factor * (total_neurons as f32);
@@ -163,7 +165,7 @@ fn main() {
             }
 
             // first part is best nns so dont evolve them, but second part will be evolved
-            const SAVE_BEST_N: usize = 1 + PLAYERS_AMOUNT / 4;
+            const SAVE_BEST_N: usize = 1 + PLAYERS_AMOUNT / 3;
             for i in SAVE_BEST_N..PLAYERS_AMOUNT {
                 nns[i] = nns[i%SAVE_BEST_N].clone();
                 nns[i].evolve(evolution_factor, &mut rng);
@@ -200,9 +202,7 @@ fn main() {
 
     // println!("best_nn = {}\n\n", nns[0]);
 
-    if !PLAY_WITH_NN_AFTER_TRAINING {
-        return;
-    }
+    if !PLAY_WITH_NN_AFTER_TRAINING { return; }
 
     loop {
         print_and_flush("Choose side to play (w/b): ");
@@ -217,7 +217,7 @@ fn main() {
             &nns[0],
             &nns[0],
             PlayGameConfig {
-                get_game: true,
+                get_game_moves: true,
                 show_log: true,
                 wait_for_enter_after_every_move: false,
                 human_color: Some(side_to_play),
@@ -341,7 +341,7 @@ fn board_to_array_for_nn<const N: usize>(board: &Board, rng: &mut ThreadRng) -> 
     for i in 0..64 {
         let square: Square = unsafe { Square::new(i) };
         let option_piece_color: Option<(Piece, Color)> = board_builder[square];
-        match option_piece_color {
+        input_for_nn[i as usize] = match option_piece_color {
             None => { PiecesValue::NONE }
 
             // Some((Piece::Pawn,   Color::White)) if side_to_move == Color::White => { PiecesValue::PAWN }
@@ -390,13 +390,14 @@ fn board_to_array_for_nn<const N: usize>(board: &Board, rng: &mut ThreadRng) -> 
     //     Color::Black => { -1.0 }
     // };
     if USE_NOISE {
-        input_for_nn[64] = rng.gen_range(-1.0..=1.0_f32);
+        input_for_nn[64] = rng.gen_range(-10.0..=10.0_f32);
     }
     if board.side_to_move() == Color::Black {
         input_for_nn.reverse();
         for i in 0..64 {
             input_for_nn[i] *= -1.0;
 
+            // very sophisticated, but same assembly code...
             // let x: f32 = input_for_nn[i];
             // let x: u32 = unsafe { std::mem::transmute(x) };
             // let x: u32 = x ^ (1 << 31);
@@ -480,7 +481,7 @@ fn string_to_chess_move(line: String) -> Option<ChessMove> {
 
 
 struct PlayGameConfig {
-    pub get_game: bool,
+    pub get_game_moves: bool,
     pub show_log: bool,
     pub wait_for_enter_after_every_move: bool,
     pub human_color: Option<Color>,
@@ -580,7 +581,7 @@ fn play_game(
         if config.show_log {
             mwms.sort_by(|mwm1, mwm2| mwm1.mark.partial_cmp(&mwm2.mark).unwrap());
             for mwm in mwms {
-                println!("{move_} -> {mark:.2}", move_=mwm.chess_move.to_string(), mark=mwm.mark);
+                println!("{move_} -> {mark:.4}", move_=mwm.chess_move.to_string(), mark=mwm.mark);
             }
         }
 
@@ -626,7 +627,7 @@ fn play_game(
     }
 
     let create_game_str_if_needed = || {
-        if config.get_game {
+        if config.get_game_moves {
             Some(actions_to_string(game.actions().to_vec()))
         } else {
             None
@@ -730,6 +731,7 @@ fn play_tournament(
 
     let mut tournament_statistics: HashMap<EnumWhoWon, u32> = HashMap::new();
 
+    // TODO(feat): parallel loop (by par_iter->map?)
     for i in 0..PLAYERS_AMOUNT {
         for j in 0..PLAYERS_AMOUNT {
             if i == j { continue; }
@@ -741,7 +743,7 @@ fn play_tournament(
                 &players[i].nn,
                 &players[j].nn,
                 PlayGameConfig {
-                    get_game: false,
+                    get_game_moves: false,
                     show_log: false,
                     wait_for_enter_after_every_move: false,
                     human_color: None,
@@ -876,7 +878,7 @@ fn play_tournament(
                 &players[0].nn,
                 &players[0].nn,
                 PlayGameConfig {
-                    get_game: true,
+                    get_game_moves: true,
                     show_log: gen >= GEN_TO_START_WATCHING,
                     wait_for_enter_after_every_move: false,
                     human_color: None,
@@ -895,7 +897,7 @@ fn play_tournament(
                 &players[0].nn,
                 &players[1].nn,
                 PlayGameConfig {
-                    get_game: true,
+                    get_game_moves: true,
                     show_log: gen >= GEN_TO_START_WATCHING,
                     wait_for_enter_after_every_move: false,
                     human_color: None,
@@ -914,7 +916,7 @@ fn play_tournament(
                 &players[0].nn,
                 &players.last().unwrap().nn,
                 PlayGameConfig {
-                    get_game: true,
+                    get_game_moves: true,
                     show_log: gen >= GEN_TO_START_WATCHING,
                     wait_for_enter_after_every_move: false,
                     human_color: None,
