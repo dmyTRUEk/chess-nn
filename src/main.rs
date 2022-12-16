@@ -30,6 +30,7 @@ use chess::{
     Square,
 };
 use rand::{Rng, prelude::ThreadRng, thread_rng};
+use rayon::prelude::{ParallelIterator, IntoParallelRefIterator};
 // use arrayfire::{device_count, device_info, info, set_device};
 
 use crate::{
@@ -139,7 +140,7 @@ fn main() {
 
         nns_old = nns.clone();
 
-        nns = play_tournament(nns, generation, &mut rng);
+        nns = play_tournament(nns, generation);
 
         if generation < GENERATIONS {
             fn generation_to_evolve_factor(gen: u32, gens: u32) -> f32 {
@@ -213,7 +214,7 @@ fn main() {
             // 'q' => { break; }
             _ => { continue; }
         };
-        let (who_won, game_moves): (EnumWhoWon, Option<String>) = play_game(
+        let (who_won, game_moves): (WhoWon, Option<String>) = play_game(
             &nns[0],
             &nns[0],
             PlayGameConfig {
@@ -221,8 +222,7 @@ fn main() {
                 show_log: true,
                 wait_for_enter_after_every_move: false,
                 human_color: Some(side_to_play),
-            },
-            &mut rng
+            }
         );
         println!(
             "{who_vs_who}: winner={who_won:?}, af={af:?}, moves: ' {moves} '\n",
@@ -241,8 +241,7 @@ fn main() {
 const MOVES_NOT_PROVIDED: &str = "moves not provided";
 
 fn fen_to_human_viewable(fen: String, beautiful_output: bool) -> String {
-    let mut res: String = String::new();
-    res += &"\n".to_string();
+    let mut res: String = String::from("\n");
     for (_i, c) in fen.chars().enumerate() {
         if c == ' ' {
             break;
@@ -321,22 +320,9 @@ mod PiecesValue {
     // pub const KING  : f32 = 1.0;
 }
 
-fn board_to_array_for_nn<const N: usize>(board: &Board, rng: &mut ThreadRng) -> [f32; N] {
+fn board_to_array_for_nn<const N: usize>(board: &Board) -> [f32; N] {
     let mut input_for_nn: [f32; N] = [0.0; N];
     let board_builder: BoardBuilder = board.into();
-
-    // let side_to_move: Color = board.side_to_move();
-
-    // fn piece_to_value(piece: Piece) -> f32 {
-    //     match piece {
-    //         Piece::Pawn   => { PiecesValue::PAWN }
-    //         Piece::Knight => { PiecesValue::KNIGHT }
-    //         Piece::Bishop => { PiecesValue::BISHOP }
-    //         Piece::Rook   => { PiecesValue::ROOK }
-    //         Piece::Queen  => { PiecesValue::QUEEN }
-    //         Piece::King   => { PiecesValue::KING }
-    //     }
-    // }
 
     for i in 0..64 {
         let square: Square = unsafe { Square::new(i) };
@@ -390,6 +376,7 @@ fn board_to_array_for_nn<const N: usize>(board: &Board, rng: &mut ThreadRng) -> 
     //     Color::Black => { -1.0 }
     // };
     if USE_NOISE {
+        let mut rng: ThreadRng = thread_rng();
         input_for_nn[64] = rng.gen_range(-10.0..=10.0_f32);
     }
     if board.side_to_move() == Color::Black {
@@ -408,8 +395,8 @@ fn board_to_array_for_nn<const N: usize>(board: &Board, rng: &mut ThreadRng) -> 
     input_for_nn
 }
 
-fn analyze(board: &Board, nn: &NeuralNetwork, rng: &mut ThreadRng) -> f32 {
-    let input_for_nn: [f32; NEURONS_IN_FIRST_LAYER] = board_to_array_for_nn(board, rng);
+fn analyze(board: &Board, nn: &NeuralNetwork) -> f32 {
+    let input_for_nn: [f32; NEURONS_IN_FIRST_LAYER] = board_to_array_for_nn(board);
     // println!("input_for_nn = {:?}", array_board);
     nn.process_input(&input_for_nn)
 }
@@ -417,7 +404,7 @@ fn analyze(board: &Board, nn: &NeuralNetwork, rng: &mut ThreadRng) -> f32 {
 
 
 #[derive(Debug, Copy, Clone, Eq, Hash, PartialEq)]
-enum EnumWhoWon {
+enum WhoWon {
     White,
     Black,
     Draw,
@@ -491,8 +478,7 @@ fn play_game(
     nn_white: &NeuralNetwork,
     nn_black: &NeuralNetwork,
     config: PlayGameConfig,
-    rng: &mut ThreadRng,
-) -> (EnumWhoWon, Option<String>) {
+) -> (WhoWon, Option<String>) {
     let mut move_number: u32 = 0;
 
     // let mut board_now = Board::default();
@@ -550,8 +536,7 @@ fn play_game(
                 match side_to_move {
                     Color::White => { &nn_white }
                     Color::Black => { &nn_black }
-                },
-                rng
+                }
             );
             let mwm_possible = MoveWithMark{chess_move: move_, mark: mark_possible};
             if config.show_log {
@@ -564,13 +549,6 @@ fn play_game(
                     omwm_best = Some(mwm_possible);
                 }
                 Some(ref mwm_best) => {
-                    // TODO: remove this?, because:
-                    // giving black_nn reversed input
-                    // let sign = match side_to_move {
-                    //     Color::White => { 1.0 }
-                    //     Color::Black => { -1.0 }
-                    // };
-                    // if sign * (mwm_possible.mark - mwm_best.mark) > 0.0 {
                     if (mwm_possible.mark - mwm_best.mark) >= 0.0 {
                         omwm_best = Some(mwm_possible);
                     }
@@ -642,16 +620,16 @@ fn play_game(
         }
         match game_res {
             GameResult::WhiteCheckmates | GameResult::BlackResigns => {
-                // return EnumWhoWon::White;
-                return (EnumWhoWon::White, create_game_str_if_needed());
+                // return WhoWon::White;
+                return (WhoWon::White, create_game_str_if_needed());
             }
             GameResult::WhiteResigns | GameResult::BlackCheckmates => {
-                // return EnumWhoWon::Black;
-                return (EnumWhoWon::Black, create_game_str_if_needed());
+                // return WhoWon::Black;
+                return (WhoWon::Black, create_game_str_if_needed());
             }
             GameResult::Stalemate | GameResult::DrawAccepted | GameResult::DrawDeclared => {
-                // return EnumWhoWon::Draw;
-                return (EnumWhoWon::Draw, create_game_str_if_needed());
+                // return WhoWon::Draw;
+                return (WhoWon::Draw, create_game_str_if_needed());
             }
         }
     }
@@ -695,16 +673,16 @@ fn play_game(
             }
         }
         if piece_sum_white > piece_sum_black {
-            // return EnumWhoWon::White;
-            return (EnumWhoWon::WhiteByPoints, create_game_str_if_needed());
+            // return WhoWon::White;
+            return (WhoWon::WhiteByPoints, create_game_str_if_needed());
         }
         else if piece_sum_black > piece_sum_white {
-            // return EnumWhoWon::Black;
-            return (EnumWhoWon::BlackByPoints, create_game_str_if_needed());
+            // return WhoWon::Black;
+            return (WhoWon::BlackByPoints, create_game_str_if_needed());
         }
         else {
-            // return EnumWhoWon::Draw;
-            return (EnumWhoWon::DrawByPoints, create_game_str_if_needed());
+            // return WhoWon::Draw;
+            return (WhoWon::DrawByPoints, create_game_str_if_needed());
         }
     }
 }
@@ -724,33 +702,55 @@ fn logistic(x: f32) -> f32 {
 fn play_tournament(
     nns: Vec<NeuralNetwork>,
     gen: u32,
-    rng: &mut ThreadRng,
 ) -> Vec<NeuralNetwork> {
     const DEFAULT_RATING: f32 = 1000.0;
     let mut players: Vec<Player> = nns.into_iter().map(|nn| Player{nn, rating: DEFAULT_RATING}).collect();
 
-    let mut tournament_statistics: HashMap<EnumWhoWon, u32> = HashMap::new();
+    let mut tournament_statistics: HashMap<WhoWon, u32> = HashMap::new();
 
-    // TODO(feat): parallel loop (by par_iter->map?)
+    // can be used, to verify that indices are correct
+    // #[derive(Debug, Copy, Clone, Eq, Hash, PartialEq)]
+    // struct NNGameResult {
+    //     i: usize,
+    //     j: usize,
+    //     who_won: WhoWon,
+    // }
+
+    let nn_game_results: Vec<Option<WhoWon>> =
+        (0..PLAYERS_AMOUNT.pow(2)) // ij
+        .collect::<Vec<usize>>()
+        .par_iter()
+        .map(|ij| {
+            let i: usize = ij / PLAYERS_AMOUNT;
+            let j: usize = ij % PLAYERS_AMOUNT;
+
+            if i == j { None } else {
+                let game_res: (WhoWon, Option<String>) = play_game(
+                    &players[i].nn,
+                    &players[j].nn,
+                    PlayGameConfig {
+                        get_game_moves: false,
+                        show_log: false,
+                        wait_for_enter_after_every_move: false,
+                        human_color: None,
+                    }
+                );
+                Some(game_res.0)
+            }
+        })
+        .collect();
+
     for i in 0..PLAYERS_AMOUNT {
         for j in 0..PLAYERS_AMOUNT {
             if i == j { continue; }
             // i->w->white, j->b->black
-            // let mut player_w: Player = players[i].clone();
-            // let mut player_b: Player = players[j].clone();
+            //let mut player_w: Player = players[i].clone();
+            //let mut player_b: Player = players[j].clone();
 
-            let game_res: (EnumWhoWon, Option<String>) = play_game(
-                &players[i].nn,
-                &players[j].nn,
-                PlayGameConfig {
-                    get_game_moves: false,
-                    show_log: false,
-                    wait_for_enter_after_every_move: false,
-                    human_color: None,
-                },
-                rng
-            );
-            let game_res_who_won: EnumWhoWon = game_res.0;
+            // can be used, to verify that indices are correct
+            //let nn_game_result: NNGameResult = nn_game_results[i*PLAYERS_AMOUNT+j].unwrap();
+            //let game_res_who_won: WhoWon = nn_game_result.who_won;
+            let game_res_who_won: WhoWon = nn_game_results[i*PLAYERS_AMOUNT+j].unwrap();
 
             // if white wins
             let delta_rating_w: f32 = logistic(players[i].rating - players[j].rating);
@@ -761,7 +761,7 @@ fn play_tournament(
             *counter += 1;
 
             match game_res_who_won {
-                EnumWhoWon::White => {
+                WhoWon::White => {
                     if SHOW_TRAINING_LOGS {
                         print_and_flush("W");
                     }
@@ -769,7 +769,7 @@ fn play_tournament(
                     // players[j].rating -= delta_rating_w;
                     players[j].rating -= delta_rating_w / 5.0;
                 }
-                EnumWhoWon::Black => {
+                WhoWon::Black => {
                     if SHOW_TRAINING_LOGS {
                         print_and_flush("B");
                     }
@@ -777,7 +777,7 @@ fn play_tournament(
                     players[i].rating -= delta_rating_b / 5.0;
                     players[j].rating += delta_rating_b;
                 }
-                EnumWhoWon::Draw => {
+                WhoWon::Draw => {
                     if SHOW_TRAINING_LOGS {
                         print_and_flush("D");
                     }
@@ -798,7 +798,7 @@ fn play_tournament(
                         // nothing
                     }
                 }
-                EnumWhoWon::WhiteByPoints => {
+                WhoWon::WhiteByPoints => {
                     if SHOW_TRAINING_LOGS {
                         print_and_flush("w");
                     }
@@ -807,7 +807,7 @@ fn play_tournament(
                     // player_i.rating += 3.0;
                     // player_j.rating -= 3.0;
                 }
-                EnumWhoWon::BlackByPoints => {
+                WhoWon::BlackByPoints => {
                     if SHOW_TRAINING_LOGS {
                         print_and_flush("b");
                     }
@@ -816,7 +816,7 @@ fn play_tournament(
                     // player_i.rating -= 3.0;
                     // player_j.rating += 3.0;
                 }
-                EnumWhoWon::DrawByPoints => {
+                WhoWon::DrawByPoints => {
                     if SHOW_TRAINING_LOGS {
                         print_and_flush("d");
                     }
@@ -882,8 +882,7 @@ fn play_tournament(
                     show_log: gen >= GEN_TO_START_WATCHING,
                     wait_for_enter_after_every_move: false,
                     human_color: None,
-                },
-                rng
+                }
             );
             println!(
                 "BEST vs SELF: winner={who_won:?}, af1={af:?}, moves: ' {moves} '\n",
@@ -901,8 +900,7 @@ fn play_tournament(
                     show_log: gen >= GEN_TO_START_WATCHING,
                     wait_for_enter_after_every_move: false,
                     human_color: None,
-                },
-                rng
+                }
             );
             println!(
                 "BEST vs BEST2: winner={who_won:?}, af2={af:?}, moves: ' {moves} '\n",
@@ -920,8 +918,7 @@ fn play_tournament(
                     show_log: gen >= GEN_TO_START_WATCHING,
                     wait_for_enter_after_every_move: false,
                     human_color: None,
-                },
-                rng
+                }
             );
             println!(
                 "BEST vs WORST: winner={who_won:?}, af2={af:?}, moves: ' {moves} '\n",
