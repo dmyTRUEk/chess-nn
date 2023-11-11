@@ -1,4 +1,4 @@
-// This file contains HashMap Utils
+//! This file contains HashMap Utils
 
 use std::hash::Hash;
 use std::collections::HashMap;

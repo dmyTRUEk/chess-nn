@@ -1,7 +1,6 @@
-// This file contains Input/Output Utils
+//! Input/Output Utils
 
 use std::io::Write;
-
 
 
 pub fn wait_for_enter() {
@@ -10,17 +9,15 @@ pub fn wait_for_enter() {
 }
 
 
-
-/// print and flush
 pub fn print_and_flush<T: std::fmt::Display>(t: T) {
     print!("{t}");
     flush();
 }
 
+
 pub fn flush() {
     std::io::stdout().flush().unwrap();
 }
-
 
 
 pub fn read_line() -> String {
