@@ -13,6 +13,7 @@ EMPTY_SPACE_XY = 1880, 540
 SCORE_COPY_POS_XY = 1490, 85
 
 ANALYZE_TIME = 10
+DELAY_BETWEEN_INPUTS = 0.1
 
 
 def main():
@@ -41,19 +42,27 @@ def main():
 
 
 def analyze_position(fen: str) -> str:
+    time.sleep(DELAY_BETWEEN_INPUTS)
     mouse_move_to(*FEN_INPUT_FIELD_XY)
+    time.sleep(DELAY_BETWEEN_INPUTS)
     mouse_click_primary()
+    time.sleep(DELAY_BETWEEN_INPUTS)
     set_copy_paste_buffer(fen)
+    time.sleep(DELAY_BETWEEN_INPUTS)
     keyboard_paste()
+    time.sleep(DELAY_BETWEEN_INPUTS)
     mouse_move_to(*EMPTY_SPACE_XY)
+    time.sleep(DELAY_BETWEEN_INPUTS)
     mouse_click_primary()
     time.sleep(ANALYZE_TIME)
     mouse_move_to(*SCORE_COPY_POS_XY)
+    time.sleep(DELAY_BETWEEN_INPUTS)
     mouse_click_primary(3)
+    time.sleep(DELAY_BETWEEN_INPUTS)
     keyboard_copy()
-    time.sleep(0.1)
+    time.sleep(2*DELAY_BETWEEN_INPUTS)
     score = get_copy_paste_buffer().strip()
-    time.sleep(0.1)
+    time.sleep(DELAY_BETWEEN_INPUTS)
     return score
 
 
