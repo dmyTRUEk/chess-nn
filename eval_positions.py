@@ -10,7 +10,7 @@ import datetime
 
 FEN_INPUT_FIELD_XY = 1200, 1000
 EMPTY_SPACE_XY = 1880, 540
-SCORE_COPY_POS_XY = 1430, 85
+SCORE_COPY_POS_XY = 1490, 85
 
 ANALYZE_TIME = 10
 
@@ -18,7 +18,7 @@ ANALYZE_TIME = 10
 def main():
     # filename = input("Input filename: ")
     filename = cli_args[1]
-    for i in range(5)[:0:-1]:
+    for i in range(10)[:0:-1]:
         print(f"Starting in {i} seconds...")
         time.sleep(1)
     print("Starting!")
