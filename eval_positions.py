@@ -13,19 +13,19 @@ EMPTY_SPACE_XY = 1880, 540
 SCORE_COPY_POS_XY = 1490, 85
 
 ANALYZE_TIME = 10
-DELAY_BETWEEN_INPUTS = 0.1
+DELAY_BETWEEN_INPUTS = 0.2
 
 
 def main():
     # filename = input("Input filename: ")
     filename = cli_args[1]
-    for i in range(10)[:0:-1]:
-        print(f"Starting in {i} seconds...")
-        time.sleep(1)
-    print("Starting!")
     with open(filename, "r") as file_in:
         now = datetime.datetime.now()
         now = f"{now.year}-{now.month}-{now.day}_{now.hour}-{now.minute}-{now.second}"
+        for i in range(10)[:0:-1]:
+            print(f"Starting in {i} seconds...")
+            time.sleep(1)
+        print("Starting!")
         with open(filename+"_evaluated_"+now, "w") as file_out:
             n = 0
             for line in file_in:
@@ -60,7 +60,7 @@ def analyze_position(fen: str) -> str:
     mouse_click_primary(3)
     time.sleep(DELAY_BETWEEN_INPUTS)
     keyboard_copy()
-    time.sleep(2*DELAY_BETWEEN_INPUTS)
+    time.sleep(DELAY_BETWEEN_INPUTS)
     score = get_copy_paste_buffer().strip()
     time.sleep(DELAY_BETWEEN_INPUTS)
     return score
