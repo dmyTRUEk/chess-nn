@@ -2,9 +2,10 @@
 
 use crate::{
     float_type::float,
-    linalg_types::RowVector,
     math_functions::{abs_prime_v, abs_v, binary_step_prime_v, binary_step_v, elu_prime_v, elu_v, gaussian_prime_v, gaussian_v, leaky_relu_prime_v, leaky_relu_v, max_out_prime_v, max_out_v, relu_prime_v, relu_v, sigmoid_prime_v, sigmoid_v, sign_sqrt_abs_prime_v, sign_sqrt_abs_v, signum_prime_v, signum_v, silu_prime_v, silu_v, soft_max_prime_v, soft_max_v, soft_plus_prime_v, soft_plus_v, tanh_prime_v, tanh_v},
 };
+
+use super::super::vector_type::Vector;
 
 use super::Layer;
 
@@ -43,12 +44,12 @@ const TANH         : u8 = 13;
 #[derive(Debug, Clone, PartialEq)]
 pub(super) struct ActivationFunction<const F_INDEX: u8> {
     size: usize,
-    input: Option<RowVector>,
-    output: Option<RowVector>,
+    input: Option<Vector>,
+    output: Option<Vector>,
 }
 
 impl<const F_INDEX: u8> ActivationFunction<F_INDEX> {
-    const F: fn(RowVector) -> RowVector = match F_INDEX {
+    const F: fn(Vector) -> Vector = match F_INDEX {
         ABS => abs_v,
         BINARY_STEP => binary_step_v,
         ELU => elu_v,
@@ -66,7 +67,7 @@ impl<const F_INDEX: u8> ActivationFunction<F_INDEX> {
         _ => unreachable!()
     };
 
-    const F_PRIME: fn(RowVector) -> RowVector = match F_INDEX {
+    const F_PRIME: fn(Vector) -> Vector = match F_INDEX {
         ABS => abs_prime_v,
         BINARY_STEP => binary_step_prime_v,
         ELU => elu_prime_v,
@@ -92,7 +93,7 @@ impl<const F_INDEX: u8> ActivationFunction<F_INDEX> {
         }
     }
 
-    fn forward_propagation(&self, input: RowVector) -> RowVector {
+    fn forward_propagation(&self, input: Vector) -> Vector {
         // assert_eq!(self.size, input.len());
         // println!("input: {input:?}");
         let output = Self::F(input);
@@ -100,7 +101,7 @@ impl<const F_INDEX: u8> ActivationFunction<F_INDEX> {
         output
     }
 
-    fn forward_propagation_for_training(&mut self, input: RowVector) -> RowVector {
+    fn forward_propagation_for_training(&mut self, input: Vector) -> Vector {
         // assert_eq!(self.size, input.len());
         self.input = Some(input.clone());
         let output = self.forward_propagation(input);
@@ -108,22 +109,22 @@ impl<const F_INDEX: u8> ActivationFunction<F_INDEX> {
         output
     }
 
-    fn backward_propagation(&mut self, output_error: RowVector, _learning_rate: float) -> RowVector {
+    fn backward_propagation(&mut self, output_error: Vector, _learning_rate: float) -> Vector {
         // assert_eq!(self.size, output_error.len());
         Self::F_PRIME(self.input.clone().unwrap()).component_mul(&output_error)
     }
 }
 
 impl<const F_INDEX: u8> Layer for ActivationFunction<F_INDEX> {
-    fn forward_propagation(&self, input: RowVector) -> RowVector {
+    fn forward_propagation(&self, input: Vector) -> Vector {
         self.forward_propagation(input)
     }
 
-    fn forward_propagation_for_training(&mut self, input: RowVector) -> RowVector {
+    fn forward_propagation_for_training(&mut self, input: Vector) -> Vector {
         self.forward_propagation_for_training(input)
     }
 
-    fn backward_propagation(&mut self, output_error: RowVector, learning_rate: float) -> RowVector {
+    fn backward_propagation(&mut self, output_error: Vector, learning_rate: float) -> Vector {
         self.backward_propagation(output_error, learning_rate)
     }
 }

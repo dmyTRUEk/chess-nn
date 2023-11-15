@@ -3,10 +3,10 @@
 pub mod activation_functions;
 pub mod fully_connected;
 
-use crate::{
-    float_type::float,
-    linalg_types::RowVector,
-};
+
+use crate::float_type::float;
+
+use super::vector_type::Vector;
 
 use self::{
     activation_functions::*,
@@ -67,13 +67,13 @@ pub type BoxDynLayer = Box<dyn Layer + Send + Sync>;
 
 pub trait Layer: CloneLayer + ToString {
     /// Returns layer `output` for given [`input`].
-    fn forward_propagation(&self, input: RowVector) -> RowVector;
+    fn forward_propagation(&self, input: Vector) -> Vector;
 
     /// Returns layer `output` for given [`input`].
-    fn forward_propagation_for_training(&mut self, input: RowVector) -> RowVector;
+    fn forward_propagation_for_training(&mut self, input: Vector) -> Vector;
 
     /// Update self params and returns layer `input_error` for given [`output_error`].
-    fn backward_propagation(&mut self, output_error: RowVector, learning_rate: float) -> RowVector;
+    fn backward_propagation(&mut self, output_error: Vector, learning_rate: float) -> Vector;
 }
 
 

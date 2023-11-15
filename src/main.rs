@@ -32,14 +32,17 @@ mod extensions;
 mod float_type;
 mod linalg_types;
 mod math_functions;
-mod neural_network;
+mod neural_network_col;
+// mod neural_network_row;
 mod utils_io;
 
 use crate::{
     float_type::float,
-    linalg_types::RowVector,
-    // TODO(ChessNeuralNetwork): make copy of `neural_network` but using `ColVector`, maybe it's much faster (bc of caches)
-    neural_network::{ChessNeuralNetwork, layers::LayerSpecs as LS},
+    neural_network_col::{
+        ChessNeuralNetwork,
+        layers::LayerSpecs as LS,
+        vector_type::Vector,
+    },
     utils_io::{flush, print_and_flush, prompt, wait_for_enter},
 };
 
@@ -56,6 +59,7 @@ const FILENAMES_ALL_DATA: &[&str] = &[
     "positions/pc_part4_evaluated_2023-11-13_18-45-15",
     "positions/pc_part5_evaluated_2023-11-13_19-27-46",
     "positions/pc_part6_evaluated_2023-11-14_09-01-36",
+    "positions/pc_part7_evaluated_2023-11-14_13-26-40",
 ];
 const FILENAME_TO_SAVE_POSITIONS: &str = "positions/lt_or_pc_partN";
 
@@ -231,7 +235,7 @@ fn main() {
         //     ]),
         // ),
 
-        // TODO: check if activation functions implemented correctly.
+        // TODO: check if activation function implemented correctly.
         // AI::new(
         //     "FC-MaxOut 100-10",
         //     ChessNeuralNetwork::from_layers_specs(vec![
@@ -489,8 +493,6 @@ fn main() {
     if !PLAY_WITH_NN_AFTER_TRAINING { return }
 
     loop {
-        // TODO: `l` to list them
-        // println!("\nChoose NeuralNetwork to play with (`best`, `worst`, index or name, `l` to list, `q` to quit):");
         println!("\nWhat do you want to do?");
         const CMD_BEST_STR : &str = "best";
         const CMD_WORST_STR: &str = "worst";
@@ -597,7 +599,7 @@ fn train_step(nn: &mut ChessNeuralNetwork, train_data_shuffled: &AnyData, learni
         // println!("output: {output:?}");
         total_error += nn.loss(output, *y);
         let error = nn.loss_prime(output, *y);
-        let mut error = RowVector::from_element(1, error);
+        let mut error = Vector::from_element(1, error);
         for layer in nn.layers.iter_mut().rev() {
             // println!("error: {error}");
             error = layer.backward_propagation(error, learning_rate);
@@ -672,12 +674,12 @@ impl TrainAndTestData {
 
 #[derive(Debug, Clone)]
 struct AnyData {
-    xy: Vec<(RowVector, float)>,
+    xy: Vec<(Vector, float)>,
 }
 
 impl AnyData {
     fn from(all_data_str: Vec<String>) -> Self {
-        let mut xy: Vec<(RowVector, float)> = all_data_str
+        let mut xy: Vec<(Vector, float)> = all_data_str
             .into_iter()
             // .into_par_iter() // no need, it's fast enough
             .map(|line| {
@@ -716,7 +718,7 @@ fn score_from_string(score_str: &str) -> float {
         })
 }
 
-fn position_vec_from_string(position_str: &str) -> RowVector {
+fn position_vec_from_string(position_str: &str) -> Vector {
     board_to_vector_for_nn(Board::from_str(position_str).unwrap())
 }
 
@@ -1072,9 +1074,9 @@ fn board_to_human_viewable(board: Board, config: BoardToHumanViewableConfig) -> 
 
 
 
-fn board_to_vector_for_nn(board: Board) -> RowVector {
-    fn board_to_vector(board: Board) -> RowVector {
-        let mut vector: RowVector = RowVector::zeros(NN_INPUT_SIZE);
+fn board_to_vector_for_nn(board: Board) -> Vector {
+    fn board_to_vector(board: Board) -> Vector {
+        let mut vector: Vector = Vector::zeros(NN_INPUT_SIZE);
         let board_builder: BoardBuilder = board.into();
         for index_in_64 in 0..64 {
             let square: Square = unsafe { Square::new(index_in_64) }; // SAFETY: this is safe bc `index_in_64` is from 0 to 64 (not including)
@@ -1099,22 +1101,17 @@ fn board_to_vector_for_nn(board: Board) -> RowVector {
         }
         vector
     }
-    let mut input_for_nn = board_to_vector(board);
-    // input_for_nn[64] = match board.side_to_move() {
-    //     Color::White => { 1. }
-    //     Color::Black => { -1. }
-    // };
-    if board.side_to_move() == Color::Black {
-        // TODO?: check what is the correct way
-        // input_for_nn = RowVector::from_iterator(NN_INPUT_SIZE, input_for_nn.into_iter().rev().map(|&x| x));
-        // input_for_nn = -input_for_nn;
-
-        // after 100 epochs:
-        // 0,0 ->
-        // 0,1 ->
-        // 1,0 ->
-        // 1,1 ->
-    }
+    let input_for_nn = board_to_vector(board);
+    // if board.side_to_move() == Color::Black {
+    //     // TODO?: check what is the correct way
+    //     // input_for_nn = Vector::from_iterator(NN_INPUT_SIZE, input_for_nn.into_iter().rev().map(|&x| x));
+    //     // input_for_nn = -input_for_nn;
+    //     // after 100 epochs:
+    //     // 0,0 ->
+    //     // 0,1 ->
+    //     // 1,0 ->
+    //     // 1,1 ->
+    // }
     // println!("{input_for_nn:?}");
     input_for_nn
 }

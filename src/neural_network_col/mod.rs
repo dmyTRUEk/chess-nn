@@ -1,16 +1,20 @@
 /// All NN functions
 
 pub mod layers;
+pub mod vector_type;
+
 
 use std::fmt;
 
 use crate::{
     NN_INPUT_SIZE,
     float_type::float,
-    linalg_types::RowVector,
 };
 
-use self::layers::{BoxDynLayer, LayerSpecs};
+use self::{
+    layers::{BoxDynLayer, LayerSpecs},
+    vector_type::Vector,
+};
 
 
 
@@ -31,7 +35,7 @@ impl ChessNeuralNetwork {
     }
 
     /// Returns predicion.
-    pub fn process_input(&self, input: RowVector) -> float {
+    pub fn process_input(&self, input: Vector) -> float {
         let mut input = input;
         let mut output = None;
         for layer in self.layers.iter() {
@@ -46,7 +50,7 @@ impl ChessNeuralNetwork {
     }
 
     /// Returns predicion and saves input & output in every layer.
-    pub fn process_input_for_training(&mut self, input: RowVector) -> float {
+    pub fn process_input_for_training(&mut self, input: Vector) -> float {
         let mut input = input;
         let mut output = None;
         for layer in self.layers.iter_mut() {
@@ -62,7 +66,7 @@ impl ChessNeuralNetwork {
     }
 
     // /// Returns vec of predicions.
-    // pub fn process_v(&self, inputs: Vec<RowVector>) -> Vec<float> {
+    // pub fn process_v(&self, inputs: Vec<Vector>) -> Vec<float> {
     //     inputs
     //         .into_iter()
     //         .map(|input| self.process_input(input))
@@ -70,7 +74,7 @@ impl ChessNeuralNetwork {
     // }
 
     // THIS IS WRONG
-    // pub fn process_multiple_input_for_training(&mut self, inputs: Vec<RowVector>) -> Vec<float> {
+    // pub fn process_multiple_input_for_training(&mut self, inputs: Vec<Vector>) -> Vec<float> {
     //     inputs
     //         .into_iter()
     //         .map(|input| self.process_input_for_training(input))
@@ -98,7 +102,7 @@ impl ChessNeuralNetwork {
     // }
 
     // /// Returns vec of losses.
-    // pub fn loss_from_input_v(&self, inputs: Vec<RowVector>, outputs_expected: Vec<float>) -> Vec<float> {
+    // pub fn loss_from_input_v(&self, inputs: Vec<Vector>, outputs_expected: Vec<float>) -> Vec<float> {
     //     // TODO(optimize): rewrite using `nalgebra`
     //     assert_eq!(inputs.len(), outputs_expected.len());
     //     let outputs = self.process_v(inputs);
@@ -107,14 +111,14 @@ impl ChessNeuralNetwork {
 
     // /// Returns sum of vec of losses = sum . loss_v
     // /// where `.` denotes composition.
-    // pub fn loss_from_input_v_sum(&self, inputs: Vec<RowVector>, outputs_expected: Vec<float>) -> float {
+    // pub fn loss_from_input_v_sum(&self, inputs: Vec<Vector>, outputs_expected: Vec<float>) -> float {
     //     assert_eq!(inputs.len(), outputs_expected.len());
     //     self.loss_from_input_v(inputs, outputs_expected).into_iter().sum()
     // }
 
     // /// Returns avg of vec of losses = avg . loss_v
     // /// where `.` denotes composition.
-    // pub fn loss_from_input_v_avg(&self, inputs: Vec<RowVector>, outputs_expected: Vec<float>) -> float {
+    // pub fn loss_from_input_v_avg(&self, inputs: Vec<Vector>, outputs_expected: Vec<float>) -> float {
     //     assert_eq!(inputs.len(), outputs_expected.len());
     //     let inputs_len_f = inputs.len() as float;
     //     self.loss_from_input_v_sum(inputs, outputs_expected) / inputs_len_f
@@ -122,7 +126,7 @@ impl ChessNeuralNetwork {
 
     // /// Returns sqrt of avg of vec of losses = sqrt . avg . loss_v
     // /// where `.` denotes composition.
-    // pub fn loss_from_input_v_avg_sqrt(&self, inputs: Vec<RowVector>, outputs_expected: Vec<float>) -> float {
+    // pub fn loss_from_input_v_avg_sqrt(&self, inputs: Vec<Vector>, outputs_expected: Vec<float>) -> float {
     //     assert_eq!(inputs.len(), outputs_expected.len());
     //     self.loss_from_input_v_avg(inputs, outputs_expected).sqrt()
     // }

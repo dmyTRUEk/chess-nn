@@ -1,8 +1,8 @@
 //! Math functions.
 
 use crate::{
+    Vector, // from main
     float_type::float,
-    linalg_types::RowVector,
 };
 
 
@@ -127,117 +127,117 @@ pub fn tanh_prime(x: float) -> float {
 // TODO(optimize): vectorize them?
 // TODO(refactor): write macros, that must be applied on not vectorized function, and it will automatically create vectorized function
 
-pub fn abs_v(v: RowVector) -> RowVector {
+pub fn abs_v(v: Vector) -> Vector {
     v.map(abs)
 }
-pub fn abs_prime_v(v: RowVector) -> RowVector {
+pub fn abs_prime_v(v: Vector) -> Vector {
     v.map(abs_prime)
 }
 
-pub fn binary_step_v(v: RowVector) -> RowVector {
+pub fn binary_step_v(v: Vector) -> Vector {
     v.map(binary_step)
 }
-pub fn binary_step_prime_v(v: RowVector) -> RowVector {
+pub fn binary_step_prime_v(v: Vector) -> Vector {
     v.map(binary_step_prime)
 }
 
-pub fn elu_v(v: RowVector) -> RowVector {
+pub fn elu_v(v: Vector) -> Vector {
     v.map(elu)
 }
-pub fn elu_prime_v(v: RowVector) -> RowVector {
+pub fn elu_prime_v(v: Vector) -> Vector {
     v.map(elu_prime)
 }
 
-pub fn gaussian_v(v: RowVector) -> RowVector {
+pub fn gaussian_v(v: Vector) -> Vector {
     v.map(gaussian)
 }
-pub fn gaussian_prime_v(v: RowVector) -> RowVector {
+pub fn gaussian_prime_v(v: Vector) -> Vector {
     v.map(gaussian_prime)
 }
 
-pub fn leaky_relu_v(v: RowVector) -> RowVector {
+pub fn leaky_relu_v(v: Vector) -> Vector {
     v.map(leaky_relu)
 }
-pub fn leaky_relu_prime_v(v: RowVector) -> RowVector {
+pub fn leaky_relu_prime_v(v: Vector) -> Vector {
     v.map(leaky_relu_prime)
 }
 
-pub fn max_out_v(v: RowVector) -> RowVector {
+pub fn max_out_v(v: Vector) -> Vector {
     // TODO: recheck
-    RowVector::from_element(v.len(), v.max())
+    Vector::from_element(v.len(), v.max())
 }
-pub fn max_out_prime_v(v: RowVector) -> RowVector {
+pub fn max_out_prime_v(v: Vector) -> Vector {
     // TODO: recheck
-    let mut res = RowVector::zeros(v.len());
+    let mut res = Vector::zeros(v.len());
     let v_max = v.max();
     let index_of_max = v.into_iter().position(|&el| el == v_max).unwrap_or(0); // None if v==[NaN, …]
     res[index_of_max] = 1.;
     res
 }
 
-pub fn relu_v(v: RowVector) -> RowVector {
+pub fn relu_v(v: Vector) -> Vector {
     v.map(relu)
 }
-pub fn relu_prime_v(v: RowVector) -> RowVector {
+pub fn relu_prime_v(v: Vector) -> Vector {
     v.map(relu_prime)
 }
 
-pub fn silu_v(v: RowVector) -> RowVector {
+pub fn silu_v(v: Vector) -> Vector {
     v.map(silu)
 }
-pub fn silu_prime_v(v: RowVector) -> RowVector {
+pub fn silu_prime_v(v: Vector) -> Vector {
     v.map(silu_prime)
 }
 
-pub fn sigmoid_v(v: RowVector) -> RowVector {
+pub fn sigmoid_v(v: Vector) -> Vector {
     v.map(sigmoid)
 }
-pub fn sigmoid_prime_v(v: RowVector) -> RowVector {
+pub fn sigmoid_prime_v(v: Vector) -> Vector {
     v.map(sigmoid_prime)
 }
 
-pub fn signum_v(v: RowVector) -> RowVector {
+pub fn signum_v(v: Vector) -> Vector {
     v.map(signum)
 }
-pub fn signum_prime_v(v: RowVector) -> RowVector {
+pub fn signum_prime_v(v: Vector) -> Vector {
     v.map(signum_prime)
 }
 
-pub fn sign_sqrt_abs_v(v: RowVector) -> RowVector {
+pub fn sign_sqrt_abs_v(v: Vector) -> Vector {
     v.map(sign_sqrt_abs)
 }
-pub fn sign_sqrt_abs_prime_v(v: RowVector) -> RowVector {
+pub fn sign_sqrt_abs_prime_v(v: Vector) -> Vector {
     v.map(sign_sqrt_abs_prime)
 }
 
-// pub fn soft_max_v(v: RowVector) -> RowVector {
+// pub fn soft_max_v(v: Vector) -> Vector {
 //     let exp_v = v.map(exp);
 //     let exp_sum: float = exp_v.sum();
 //     exp_v / exp_sum
 // }
 /// This is stable version of SoftMax.
 /// src: https://eli.thegreenplace.net/2016/the-softmax-function-and-its-derivative/
-pub fn soft_max_v(mut v: RowVector) -> RowVector {
-    v -= RowVector::from_element(v.len(), v.max());
+pub fn soft_max_v(mut v: Vector) -> Vector {
+    v -= Vector::from_element(v.len(), v.max());
     let exp_v = v.map(exp);
     let exp_sum: float = exp_v.sum();
     exp_v / exp_sum
 }
-pub fn soft_max_prime_v(v: RowVector) -> RowVector {
+pub fn soft_max_prime_v(v: Vector) -> Vector {
     todo!()
 }
 
-pub fn soft_plus_v(v: RowVector) -> RowVector {
+pub fn soft_plus_v(v: Vector) -> Vector {
     v.map(soft_plus)
 }
-pub fn soft_plus_prime_v(v: RowVector) -> RowVector {
+pub fn soft_plus_prime_v(v: Vector) -> Vector {
     v.map(soft_plus_prime)
 }
 
-pub fn tanh_v(v: RowVector) -> RowVector {
+pub fn tanh_v(v: Vector) -> Vector {
     v.map(tanh)
 }
-pub fn tanh_prime_v(v: RowVector) -> RowVector {
+pub fn tanh_prime_v(v: Vector) -> Vector {
     v.map(tanh_prime)
 }
 
