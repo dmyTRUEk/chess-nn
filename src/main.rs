@@ -46,18 +46,18 @@ use crate::{
 
 
 const FILENAMES_ALL_DATA: &[&str] = &[
-    "positions_lt_part1_evaluated_2023-11-11_00-18-58",
-    "positions_lt_part2_evaluated_2023-11-12_12-48-37",
-    "positions_lt_part3_evaluated_2023-11-13_09-46-52",
-    "positions_lt_part4_evaluated_2023-11-13_19-26-50",
-    "positions_pc_part1_evaluated_2023-11-12_15-17-11",
-    "positions_pc_part2_evaluated_2023-11-13_09-35-55",
-    "positions_pc_part3_evaluated_2023-11-13_14-34-22",
-    "positions_pc_part4_evaluated_2023-11-13_18-45-15",
-    "positions_pc_part5_evaluated_2023-11-13_19-27-46",
-    "positions_pc_part6_evaluated_2023-11-14_09-01-36",
+    "positions/lt_part1_evaluated_2023-11-11_00-18-58",
+    "positions/lt_part2_evaluated_2023-11-12_12-48-37",
+    "positions/lt_part3_evaluated_2023-11-13_09-46-52",
+    "positions/lt_part4_evaluated_2023-11-13_19-26-50",
+    "positions/pc_part1_evaluated_2023-11-12_15-17-11",
+    "positions/pc_part2_evaluated_2023-11-13_09-35-55",
+    "positions/pc_part3_evaluated_2023-11-13_14-34-22",
+    "positions/pc_part4_evaluated_2023-11-13_18-45-15",
+    "positions/pc_part5_evaluated_2023-11-13_19-27-46",
+    "positions/pc_part6_evaluated_2023-11-14_09-01-36",
 ];
-const FILENAME_TO_SAVE_POSITIONS: &str = "positions";
+const FILENAME_TO_SAVE_POSITIONS: &str = "positions/lt_or_pc_part1";
 
 mod fully_connected_layer_initial_values {
     use crate::float_type::float;
