@@ -5,24 +5,32 @@ pub mod layers;
 use std::fmt;
 
 use crate::{
+    NN_INPUT_SIZE,
     float_type::float,
     linalg_types::RowVector,
 };
 
-use self::layers::Layer;
+use self::layers::{BoxDynLayer, LayerSpecs};
 
 
 
 #[derive(Clone)]
 pub struct ChessNeuralNetwork {
-    pub layers: Vec<Box<dyn Layer + Send + Sync>>,
+    pub layers: Vec<BoxDynLayer>,
 }
 
 impl ChessNeuralNetwork {
-    pub fn new(layers: Vec<Box<dyn Layer + Send + Sync>>) -> Self {
+    /// Create Neural Network from layers specs.
+    pub fn from_layers_specs(layers_specs: Vec<LayerSpecs>) -> Self {
+        let mut layers = Vec::<BoxDynLayer>::with_capacity(layers_specs.len());
+        let mut input_size: usize = NN_INPUT_SIZE;
+        for layer_specs in layers_specs {
+            layers.push(layer_specs.to_layer(&mut input_size));
+        }
         Self { layers }
     }
 
+    /// Returns predicion.
     pub fn process_input(&self, input: RowVector) -> float {
         let mut input = input;
         let mut output = None;
@@ -37,6 +45,7 @@ impl ChessNeuralNetwork {
         output[0]
     }
 
+    /// Returns predicion and saves input & output in every layer.
     pub fn process_input_for_training(&mut self, input: RowVector) -> float {
         let mut input = input;
         let mut output = None;
@@ -52,33 +61,71 @@ impl ChessNeuralNetwork {
         output.unwrap()[0]
     }
 
-    pub fn process_multiple_input(&self, inputs: Vec<RowVector>) -> Vec<float> {
-        inputs
-            .into_iter()
-            .map(|input| self.process_input(input))
-            .collect()
-    }
+    // /// Returns vec of predicions.
+    // pub fn process_v(&self, inputs: Vec<RowVector>) -> Vec<float> {
+    //     inputs
+    //         .into_iter()
+    //         .map(|input| self.process_input(input))
+    //         .collect()
+    // }
 
-    pub fn process_multiple_input_for_training(&mut self, inputs: Vec<RowVector>) -> Vec<float> {
-        inputs
-            .into_iter()
-            .map(|input| self.process_input_for_training(input))
-            .collect()
-    }
+    // THIS IS WRONG
+    // pub fn process_multiple_input_for_training(&mut self, inputs: Vec<RowVector>) -> Vec<float> {
+    //     inputs
+    //         .into_iter()
+    //         .map(|input| self.process_input_for_training(input))
+    //         .collect()
+    // }
 
+    /// Loss function = Mean Square Error.
     pub fn loss(&self, output_actual: float, output_expected: float) -> float {
         let error = output_expected - output_actual;
         let error_squared = error.powi(2);
         error_squared
     }
 
+    /// Derivative of loss function.
     pub fn loss_prime(&self, output_actual: float, output_expected: float) -> float {
         2. * (output_actual - output_expected)
     }
 
-    pub fn get_total_neurons(&self) -> usize {
-        todo!()
-    }
+    // pub fn loss_v(&self, outputs_actual: Vec<float>, outputs_expected: Vec<float>) -> Vec<float> {
+    //     // TODO(optimize): rewrite using `nalgebra`
+    //     assert_eq!(outputs_actual.len(), outputs_expected.len());
+    //     outputs_actual.into_iter().zip(outputs_expected)
+    //         .map(|(output_actual, outputs_expected)| self.loss(output_actual, outputs_expected))
+    //         .collect()
+    // }
+
+    // /// Returns vec of losses.
+    // pub fn loss_from_input_v(&self, inputs: Vec<RowVector>, outputs_expected: Vec<float>) -> Vec<float> {
+    //     // TODO(optimize): rewrite using `nalgebra`
+    //     assert_eq!(inputs.len(), outputs_expected.len());
+    //     let outputs = self.process_v(inputs);
+    //     self.loss_v(outputs, outputs_expected)
+    // }
+
+    // /// Returns sum of vec of losses = sum . loss_v
+    // /// where `.` denotes composition.
+    // pub fn loss_from_input_v_sum(&self, inputs: Vec<RowVector>, outputs_expected: Vec<float>) -> float {
+    //     assert_eq!(inputs.len(), outputs_expected.len());
+    //     self.loss_from_input_v(inputs, outputs_expected).into_iter().sum()
+    // }
+
+    // /// Returns avg of vec of losses = avg . loss_v
+    // /// where `.` denotes composition.
+    // pub fn loss_from_input_v_avg(&self, inputs: Vec<RowVector>, outputs_expected: Vec<float>) -> float {
+    //     assert_eq!(inputs.len(), outputs_expected.len());
+    //     let inputs_len_f = inputs.len() as float;
+    //     self.loss_from_input_v_sum(inputs, outputs_expected) / inputs_len_f
+    // }
+
+    // /// Returns sqrt of avg of vec of losses = sqrt . avg . loss_v
+    // /// where `.` denotes composition.
+    // pub fn loss_from_input_v_avg_sqrt(&self, inputs: Vec<RowVector>, outputs_expected: Vec<float>) -> float {
+    //     assert_eq!(inputs.len(), outputs_expected.len());
+    //     self.loss_from_input_v_avg(inputs, outputs_expected).sqrt()
+    // }
 }
 
 

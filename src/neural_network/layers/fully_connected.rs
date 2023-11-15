@@ -4,6 +4,7 @@ use rand::{thread_rng, Rng};
 
 use crate::{
     float_type::float,
+    fully_connected_layer_initial_values::{S_MAX, S_MIN, W_MAX, W_MIN},
     linalg_types::{Matrix, RowVector},
 };
 
@@ -11,27 +12,23 @@ use super::Layer;
 
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct FCLayer<const INPUT_SIZE: usize, const OUTPUT_SIZE: usize> {
+pub(super) struct FullyConnected {
     weights_matrix: Matrix,
     shift_vector: RowVector,
     input: Option<RowVector>,
     output: Option<RowVector>,
 }
 
-impl<const INPUT_SIZE: usize, const OUTPUT_SIZE: usize> Layer for FCLayer<INPUT_SIZE, OUTPUT_SIZE> {
-    fn new() -> Self {
-        const W_MIN: float = -0.003;
-        const W_MAX: float =  0.003;
-        const S_MIN: float = -0.003;
-        const S_MAX: float =  0.003;
+impl FullyConnected {
+    pub fn new(input_size: usize, output_size: usize) -> Self {
         let mut rng = thread_rng();
         let weights_matrix = Matrix::from_fn(
-            INPUT_SIZE,
-            OUTPUT_SIZE,
+            input_size,
+            output_size,
             |_i, _j| rng.gen_range(W_MIN .. W_MAX),
         );
         let shift_vector = RowVector::from_fn(
-            OUTPUT_SIZE,
+            output_size,
             |_i, _| rng.gen_range(S_MIN .. S_MAX),
         );
         Self {
@@ -41,7 +38,9 @@ impl<const INPUT_SIZE: usize, const OUTPUT_SIZE: usize> Layer for FCLayer<INPUT_
             output: None,
         }
     }
+}
 
+impl Layer for FullyConnected {
     fn forward_propagation(&self, input: RowVector) -> RowVector {
         let output: RowVector = input * &self.weights_matrix + &self.shift_vector;
         output
@@ -78,7 +77,7 @@ impl<const INPUT_SIZE: usize, const OUTPUT_SIZE: usize> Layer for FCLayer<INPUT_
     }
 }
 
-impl<const INPUT_SIZE: usize, const OUTPUT_SIZE: usize> ToString for FCLayer<INPUT_SIZE, OUTPUT_SIZE> {
+impl ToString for FullyConnected {
     fn to_string(&self) -> String {
         [
             "FCLayer:",

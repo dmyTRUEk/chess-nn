@@ -11,7 +11,7 @@ Y_MAX = 60+864
 
 LETTERS = 'abcdefgh'
 
-SPEED = 250
+DELAY = 0.5
 
 
 def main():
@@ -43,13 +43,13 @@ def play_game():
             X_MIN + (X_MAX-X_MIN)*(x1+0.5)/8,
             Y_MAX - (Y_MAX-Y_MIN)*(y1+0.5)/8,
         )
-        time.sleep(50/SPEED)
+        time.sleep(DELAY)
 
         mouse_click_at(
             X_MIN + (X_MAX-X_MIN)*(x2+0.5)/8,
             Y_MAX - (Y_MAX-Y_MIN)*(y2+0.5)/8,
         )
-        time.sleep(50/SPEED)
+        time.sleep(DELAY)
 
         if create_fig != '':
             x3 = x2
@@ -76,7 +76,7 @@ def play_game():
                 X_MIN + (X_MAX-X_MIN)*(x3+0.5)/8,
                 Y_MAX - (Y_MAX-Y_MIN)*(y3+0.5)/8,
             )
-            time.sleep(50/SPEED)
+            time.sleep(DELAY)
 
         is_whites_move = not is_whites_move
     print()
