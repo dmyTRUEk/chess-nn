@@ -32,13 +32,13 @@ mod extensions;
 mod float_type;
 mod linalg_types;
 mod math_functions;
-mod neural_network_col;
-// mod neural_network_row;
+// mod neural_network_col;
+mod neural_network_row;
 mod utils_io;
 
 use crate::{
     float_type::float,
-    neural_network_col::{
+    neural_network_row::{
         ChessNeuralNetwork,
         layers::LayerSpecs as LS,
         vector_type::Vector,
