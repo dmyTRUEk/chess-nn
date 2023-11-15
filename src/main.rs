@@ -57,7 +57,7 @@ const FILENAMES_ALL_DATA: &[&str] = &[
     "positions/pc_part5_evaluated_2023-11-13_19-27-46",
     "positions/pc_part6_evaluated_2023-11-14_09-01-36",
 ];
-const FILENAME_TO_SAVE_POSITIONS: &str = "positions/lt_or_pc_part1";
+const FILENAME_TO_SAVE_POSITIONS: &str = "positions/lt_or_pc_partN";
 
 mod fully_connected_layer_initial_values {
     use crate::float_type::float;
