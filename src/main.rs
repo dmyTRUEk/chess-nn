@@ -736,11 +736,12 @@ fn generate_random_positions(fens_number: usize) -> Vec<String> {
         for _move_number in 0..2*moves_limit {
             let possible_moves = MoveGen::new_legal(&game.current_position());
             let possible_moves = possible_moves.into_iter().collect::<Vec<_>>();
-            let random_move = possible_moves[rng.gen_range(0..possible_moves.len())];
+            let random_move_index = rng.gen_range(0..possible_moves.len());
+            let random_move = possible_moves[random_move_index];
             game.make_move(random_move);
             if game.result().is_some() { break }
+            if game.can_declare_draw() { break }
             fens.push(game.current_position().to_string());
-            // if game.can_declare_draw() { break }
         }
     }
     fens
