@@ -53,6 +53,7 @@ const FILENAMES_ALL_DATA: &[&str] = &[
     "positions/lt_part2_evaluated_2023-11-12_12-48-37",
     "positions/lt_part3_evaluated_2023-11-13_09-46-52",
     "positions/lt_part4_evaluated_2023-11-13_19-26-50",
+    "positions/lt_part5_evaluated_2023-11-16_21-16-25",
     "positions/pc_part1_evaluated_2023-11-12_15-17-11",
     "positions/pc_part2_evaluated_2023-11-13_09-35-55",
     "positions/pc_part3_evaluated_2023-11-13_14-34-22",
@@ -60,6 +61,9 @@ const FILENAMES_ALL_DATA: &[&str] = &[
     "positions/pc_part5_evaluated_2023-11-13_19-27-46",
     "positions/pc_part6_evaluated_2023-11-14_09-01-36",
     "positions/pc_part7_evaluated_2023-11-14_13-26-40",
+    "positions/pc_part8_evaluated_2023-11-15_09-36-39",
+    "positions/pc_part9_evaluated_2023-11-16_15-59-12",
+    "positions/pc_part10_evaluated_2023-11-16_18-54-26",
 ];
 const FILENAME_TO_SAVE_POSITIONS: &str = "positions/lt_or_pc_partN";
 
