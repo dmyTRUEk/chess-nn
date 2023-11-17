@@ -3,16 +3,9 @@
 use crate::{
     Vector, // from main
     float_type::float,
+    math_aliases::*,
 };
 
-
-// mathods to functions aliases
-pub fn abs(x: float) -> float { x.abs() }
-pub fn exp(x: float) -> float { x.exp() }
-pub fn ln(x: float) -> float { x.ln() }
-pub fn signum(x: float) -> float { x.signum() }
-pub fn sqrt(x: float) -> float { x.sqrt() }
-pub fn tanh(x: float) -> float { x.tanh() }
 
 // pub fn kronecker_delta_f<T: Eq>(i: T, j: T) -> float {
 //     if i == j { 1. } else { 0. }

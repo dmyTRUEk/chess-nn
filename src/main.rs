@@ -24,13 +24,13 @@ use std::{
 };
 
 use chess::{Action, Board, BoardBuilder, ChessMove, Color, File, Game, GameResult, MoveGen, Piece, Rank, Square};
-use math_functions::exp;
 use rand::{Rng, seq::SliceRandom, thread_rng};
 use rayon::prelude::{IndexedParallelIterator, IntoParallelIterator, IntoParallelRefMutIterator, ParallelIterator};
 
 mod extensions;
 mod float_type;
 mod linalg_types;
+mod math_aliases;
 mod math_functions;
 // mod neural_network_col;
 mod neural_network_row;
@@ -38,6 +38,7 @@ mod utils_io;
 
 use crate::{
     float_type::float,
+    math_aliases::exp,
     neural_network_row::{
         ChessNeuralNetwork,
         layers::LayerSpecs as LS,
@@ -79,12 +80,12 @@ const TRAIN_TO_TEST_RATIO: float = 0.9;
 
 const NN_INPUT_SIZE: usize = 768; // 2 * 6 * 64
 
-/// Starting learning rate, it will gradually decrease with epochs.
+/// Starting learning rate, gradually decreases with epochs.
 const LEARNING_RATE_0: float = 0.01;
-const LEARNING_RATE_EXP_K: float = 2.;
-const TRAINING_EPOCHS: u32 = 1_000;
+const LEARNING_RATE_EXP_K: float = 1.;
+const TRAINING_EPOCHS: u32 = 100;
 
-const TOURNAMENTS_NUMBER: u32 = 10;
+const TOURNAMENTS_NUMBER: u32 = 20;
 const DEFAULT_RATING: float = 1_000.;
 const NN_RESULT_RANDOM_CHOICE: Option<(float, float)> = Some((0.9, 1.1));
 const PLAY_GAME_MOVES_LIMIT: u32 = 500;
@@ -170,28 +171,28 @@ fn main() {
             ]),
         ),
 
-        AI::new(
-            "FC-Elu 100-10",
-            ChessNeuralNetwork::from_layers_specs(vec![
-                LS::FullyConnected(100),
-                LS::AF_Elu,
-                LS::FullyConnected(10),
-                LS::AF_Elu,
-                LS::FullyConnected(1),
-            ]),
-        ),
-        AI::new(
-            "FC-Elu 100-50-20",
-            ChessNeuralNetwork::from_layers_specs(vec![
-                LS::FullyConnected(100),
-                LS::AF_Elu,
-                LS::FullyConnected(50),
-                LS::AF_Elu,
-                LS::FullyConnected(20),
-                LS::AF_Elu,
-                LS::FullyConnected(1),
-            ]),
-        ),
+        // AI::new(
+        //     "FC-Elu 100-10",
+        //     ChessNeuralNetwork::from_layers_specs(vec![
+        //         LS::FullyConnected(100),
+        //         LS::AF_Elu,
+        //         LS::FullyConnected(10),
+        //         LS::AF_Elu,
+        //         LS::FullyConnected(1),
+        //     ]),
+        // ),
+        // AI::new(
+        //     "FC-Elu 100-50-20",
+        //     ChessNeuralNetwork::from_layers_specs(vec![
+        //         LS::FullyConnected(100),
+        //         LS::AF_Elu,
+        //         LS::FullyConnected(50),
+        //         LS::AF_Elu,
+        //         LS::FullyConnected(20),
+        //         LS::AF_Elu,
+        //         LS::FullyConnected(1),
+        //     ]),
+        // ),
 
         AI::new(
             "FC-Gaussian 100-10",
@@ -402,28 +403,28 @@ fn main() {
         //     ]),
         // ),
 
-        AI::new(
-            "FC-SoftPlus 100-10",
-            ChessNeuralNetwork::from_layers_specs(vec![
-                LS::FullyConnected(100),
-                LS::AF_SoftPlus,
-                LS::FullyConnected(10),
-                LS::AF_SoftPlus,
-                LS::FullyConnected(1),
-            ]),
-        ),
-        AI::new(
-            "FC-SoftPlus 100-50-20",
-            ChessNeuralNetwork::from_layers_specs(vec![
-                LS::FullyConnected(100),
-                LS::AF_SoftPlus,
-                LS::FullyConnected(50),
-                LS::AF_SoftPlus,
-                LS::FullyConnected(20),
-                LS::AF_SoftPlus,
-                LS::FullyConnected(1),
-            ]),
-        ),
+        // AI::new(
+        //     "FC-SoftPlus 100-10",
+        //     ChessNeuralNetwork::from_layers_specs(vec![
+        //         LS::FullyConnected(100),
+        //         LS::AF_SoftPlus,
+        //         LS::FullyConnected(10),
+        //         LS::AF_SoftPlus,
+        //         LS::FullyConnected(1),
+        //     ]),
+        // ),
+        // AI::new(
+        //     "FC-SoftPlus 100-50-20",
+        //     ChessNeuralNetwork::from_layers_specs(vec![
+        //         LS::FullyConnected(100),
+        //         LS::AF_SoftPlus,
+        //         LS::FullyConnected(50),
+        //         LS::AF_SoftPlus,
+        //         LS::FullyConnected(20),
+        //         LS::AF_SoftPlus,
+        //         LS::FullyConnected(1),
+        //     ]),
+        // ),
 
         AI::new( // CRAZY BUG??: breaks (gives NaN) on `LEARNING_RATE_0` = 0.1?!?
             "FC-Tanh 100-10",
@@ -487,6 +488,7 @@ fn main() {
     let ais = ais;
     fn print_ais_ratings(ais: &Vec<AI>, is_first_time: bool) {
         let maybe_after_n_tournaments_str = if is_first_time { format!(" after {TOURNAMENTS_NUMBER} tournaments") } else { "".to_string() };
+        println!();
         println!("AIs' ratings{maybe_after_n_tournaments_str}:");
         for (i, ai) in ais.iter().enumerate() {
             println!("#{i}: {r:.2} - {n}", i=i+1, r=ai.rating, n=ai.name);
@@ -534,13 +536,13 @@ fn main() {
             NNTPW::Name(name) => if let Some(ai) = ais.iter().find(|ai| ai.name == name) { &ai } else { continue }
         };
         let nn_to_play_with: &ChessNeuralNetwork = &ai_to_play_with.nn;
+        println!("Choose side to play:");
         const CMD_SIDE_TO_PLAY_WHITE_SHORT: &str = "w";
         const CMD_SIDE_TO_PLAY_WHITE_FULL : &str = "white";
+        println!("- white: `{CMD_SIDE_TO_PLAY_WHITE_SHORT}` or `{CMD_SIDE_TO_PLAY_WHITE_FULL}`");
         const CMD_SIDE_TO_PLAY_BLACK_SHORT: &str = "b";
         const CMD_SIDE_TO_PLAY_BLACK_FULL : &str = "black";
-        println!("Choose side to play:");
-        println!("- white: `w` or `white`");
-        println!("- black: `b` or `black`");
+        println!("- black: `{CMD_SIDE_TO_PLAY_BLACK_SHORT}` or `{CMD_SIDE_TO_PLAY_BLACK_FULL}`");
         println!("- return back: anything else");
         let line = prompt("Choose wisely. ");
         let human_side_to_play: Color = match line.as_str() {
@@ -552,7 +554,7 @@ fn main() {
             wait_for_enter_after_every_move: false,
             ..PlayGameConfig::all(human_side_to_play)
         };
-        println!("Good luck! In any unclear situation use `s` to surrender or `q` to quit");
+        println!("Good luck! In any unclear situation use `s` to surrender or `q` to quit.");
         let (winner, game_moves) = play_game(&nn_to_play_with, &nn_to_play_with, config);
         let Ok(winner) = winner else { continue };
         println!(
@@ -582,7 +584,7 @@ fn train_nns(ais: &mut Vec<AI>, train_and_test_data: TrainAndTestData) {
             .map(|(i, ai)| {
                 let avg_train_error = train_step(&mut ai.nn, &train_data, learning_rate);
                 let avg_test_error = calc_avg_test_error(&ai.nn, &test_data);
-                format!("NN#{i}\tavg_train_error = {avg_train_error}\tavg_test_error = {avg_test_error}\t{name}", i=i+1, name=ai.name)
+                format!("NN#{i}\tavg train error = {avg_train_error}\tavg test error = {avg_test_error}\t{name}", i=i+1, name=ai.name)
             })
             // .reduce(|acc, el| acc + " " + &el)
             // .unwrap_or_default()
@@ -1271,16 +1273,22 @@ fn play_game(
         // if vs human
         if let Some(human_color) = config.human_color && human_color == side_to_move {
             let move_by_human = get_move_from_human(&game);
-            let move_ = match move_by_human {
-                MoveByHuman::Quit => { return (Err(PlayGameError::Quit), None) }
+            match move_by_human {
+                MoveByHuman::Quit => {
+                    return (Err(PlayGameError::Quit), None)
+                }
                 MoveByHuman::Surrender => {
                     game.resign(human_color);
                     continue
                 }
-                MoveByHuman::Move(move_) => move_,
+                MoveByHuman::Move(move_) => {
+                    game.make_move(move_);
+                    continue // go to AI's move
+                },
             };
-            game.make_move(move_);
-            continue // go to AI's move
+            // DENY REACHABLE CODE
+            #[allow(unreachable_code)]
+            unreachable!()
         }
 
         let nn_to_make_move = match side_to_move {
@@ -1335,7 +1343,7 @@ fn play_game(
                 let MoveWithMark { move_, score, weight } = mwm;
                 let weighted_score = mwm.get_weighted_score();
                 // TODO: better formatting
-                println!("{move_:<5} -> score = {score:<18} weight = {weight:<18} -> weighted_score = {weighted_score}");
+                println!("{move_:<5} -> score = {score:<20} weight = {weight:<20} -> weighted_score = {weighted_score}");
             }
         }
 
@@ -1465,15 +1473,17 @@ fn play_tournament(ais: &mut Vec<AI>, config: PlayTournametConfig) {
     if config.print_games {
         println!("\nstats: {:?}", tournament_statistics);
 
-        let ratings_sorted: Vec<float> = ais.iter().map(|p| p.rating).collect();
-        print!("final ratings (sorted): [");
-        for i in 0..ratings_sorted.len() {
-            print!("{r:.2}", r=ratings_sorted[i]);
-            if i != ratings_sorted.len()-1 {
-                print!(", ");
-            }
-        }
-        println!("]\n");
+        let ratings: Vec<float> = ais
+            .iter()
+            .map(|p| p.rating)
+            .collect();
+        let ratings_str = ratings
+            .iter()
+            .map(|r| format!("{r:.2}"))
+            .reduce(|acc, el| acc + ", " + &el)
+            .unwrap_or_default();
+        println!("final ratings (sorted): [{ratings_str}]");
+        println!();
 
         {
             let (winner, game_moves) = play_game(
@@ -1485,9 +1495,10 @@ fn play_tournament(ais: &mut Vec<AI>, config: PlayTournametConfig) {
                 }
             );
             println!(
-                "BEST vs SELF: winner={winner:?}, moves: ' {moves} '\n",
+                "BEST vs SELF: winner={winner:?}, moves: ' {moves} '",
                 moves = game_moves.unwrap_or(MOVES_NOT_PROVIDED.to_string()),
             );
+            println!();
         }
 
         {
@@ -1500,9 +1511,10 @@ fn play_tournament(ais: &mut Vec<AI>, config: PlayTournametConfig) {
                 }
             );
             println!(
-                "BEST vs BEST2: winner={winner:?}, moves: ' {moves} '\n",
+                "BEST vs BEST2: winner={winner:?}, moves: ' {moves} '",
                 moves = game_moves.unwrap_or(MOVES_NOT_PROVIDED.to_string()),
             );
+            println!();
         }
 
         {
@@ -1515,9 +1527,10 @@ fn play_tournament(ais: &mut Vec<AI>, config: PlayTournametConfig) {
                 }
             );
             println!(
-                "BEST vs WORST: winner={winner:?}, moves: ' {moves} '\n",
+                "BEST vs WORST: winner={winner:?}, moves: ' {moves} '",
                 moves = game_moves.unwrap_or(MOVES_NOT_PROVIDED.to_string()),
             );
+            println!();
         }
 
         {
@@ -1530,9 +1543,10 @@ fn play_tournament(ais: &mut Vec<AI>, config: PlayTournametConfig) {
                 }
             );
             println!(
-                "WORST vs SELF: winner={winner:?}, moves: ' {moves} '\n",
+                "WORST vs SELF: winner={winner:?}, moves: ' {moves} '",
                 moves = game_moves.unwrap_or(MOVES_NOT_PROVIDED.to_string()),
             );
+            // println!();
         }
     }
 }
