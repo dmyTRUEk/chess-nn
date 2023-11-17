@@ -65,6 +65,7 @@ const FILENAMES_ALL_DATA: &[&str] = &[
     "positions/pc_part8_evaluated_2023-11-15_09-36-39",
     "positions/pc_part9_evaluated_2023-11-16_15-59-12",
     "positions/pc_part10_evaluated_2023-11-16_18-54-26",
+    "positions/pc_part11_evaluated_2023-11-17_07-51-10",
 ];
 const FILENAME_TO_SAVE_POSITIONS: &str = "positions/lt_or_pc_partN";
 
