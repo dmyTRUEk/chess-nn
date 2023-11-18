@@ -2,7 +2,7 @@
 
 use crate::{
     float_type::float,
-    math_functions::{abs_prime_v, abs_v, binary_step_prime_v, binary_step_v, elu_prime_v, elu_v, gaussian_prime_v, gaussian_v, leaky_relu_prime_v, leaky_relu_v, max_out_prime_v, max_out_v, relu_prime_v, relu_v, sigmoid_prime_v, sigmoid_v, sign_sqrt_abs_prime_v, sign_sqrt_abs_v, signum_prime_v, signum_v, silu_prime_v, silu_v, soft_max_prime_v, soft_max_v, soft_plus_prime_v, soft_plus_v, tanh_prime_v, tanh_v},
+    math_functions::{abs_prime_v, abs_v, binary_step_prime_v, binary_step_v, elu_prime_v, elu_v, gaussian_prime_v, gaussian_v, leaky_relu_prime_v, leaky_relu_v, max_out_prime_v, max_out_v, relu_prime_v, relu_v, sigmoid_prime_v, sigmoid_v, sign_ln_abs_prime_v, sign_ln_abs_v, sign_sqrt_abs_prime_v, sign_sqrt_abs_v, signum_prime_v, signum_v, silu_prime_v, silu_v, soft_max_prime_v, soft_max_v, soft_plus_prime_v, soft_plus_v, tanh_prime_v, tanh_v},
 };
 
 use super::super::vector_type::Vector;
@@ -20,26 +20,32 @@ use super::Layer;
 #[allow(non_camel_case_types)] pub(super) type AF_Relu = ActivationFunction<RELU>;
 #[allow(non_camel_case_types)] pub(super) type AF_Sigmoid = ActivationFunction<SIGMOID>;
 #[allow(non_camel_case_types)] pub(super) type AF_Signum = ActivationFunction<SIGNUM>;
+#[allow(non_camel_case_types)] pub(super) type AF_SignLnAbs = ActivationFunction<SIGN_LN_ABS>;
 #[allow(non_camel_case_types)] pub(super) type AF_SignSqrtAbs = ActivationFunction<SIGN_SQRT_ABS>;
 #[allow(non_camel_case_types)] pub(super) type AF_Silu = ActivationFunction<SILU>;
 #[allow(non_camel_case_types)] pub(super) type AF_SoftMax = ActivationFunction<SOFT_MAX>;
 #[allow(non_camel_case_types)] pub(super) type AF_SoftPlus = ActivationFunction<SOFT_PLUS>;
 #[allow(non_camel_case_types)] pub(super) type AF_Tanh = ActivationFunction<TANH>;
 
+// !!! NOTE !!!: When adding new AF, also add it to [`super::LayerSpecs`] & [`ais_generator::ActivationFunctions::gen_with_rng`].
+// TODO: rewrite using ("const") enum to avoid manually managing numbers.
 const ABS          : u8 = 0;
 const BINARY_STEP  : u8 = 1;
 const ELU          : u8 = 2;
 const GAUSSIAN     : u8 = 3;
 const LEAKY_RELU   : u8 = 4;
+// TODO: check if implemented correctly.
 const MAX_OUT      : u8 = 5;
 const RELU         : u8 = 6;
 const SIGMOID      : u8 = 7;
 const SIGNUM       : u8 = 8;
-const SIGN_SQRT_ABS: u8 = 9;
-const SILU         : u8 = 10;
-const SOFT_MAX     : u8 = 11;
-const SOFT_PLUS    : u8 = 12;
-const TANH         : u8 = 13;
+// TODO: rename to SYM_*
+const SIGN_LN_ABS  : u8 = 9;
+const SIGN_SQRT_ABS: u8 = 10;
+const SILU         : u8 = 11;
+const SOFT_MAX     : u8 = 12;
+const SOFT_PLUS    : u8 = 13;
+const TANH         : u8 = 14;
 
 #[derive(Debug, Clone, PartialEq)]
 pub(super) struct ActivationFunction<const F_INDEX: u8> {
@@ -59,6 +65,7 @@ impl<const F_INDEX: u8> ActivationFunction<F_INDEX> {
         RELU => relu_v,
         SIGMOID => sigmoid_v,
         SIGNUM => signum_v,
+        SIGN_LN_ABS => sign_ln_abs_v,
         SIGN_SQRT_ABS => sign_sqrt_abs_v,
         SILU => silu_v,
         SOFT_MAX => soft_max_v,
@@ -77,6 +84,7 @@ impl<const F_INDEX: u8> ActivationFunction<F_INDEX> {
         RELU => relu_prime_v,
         SIGMOID => sigmoid_prime_v,
         SIGNUM => signum_prime_v,
+        SIGN_LN_ABS => sign_ln_abs_prime_v,
         SIGN_SQRT_ABS => sign_sqrt_abs_prime_v,
         SILU => silu_prime_v,
         SOFT_MAX => soft_max_prime_v,
@@ -85,7 +93,7 @@ impl<const F_INDEX: u8> ActivationFunction<F_INDEX> {
         _ => unreachable!()
     };
 
-    pub(super) fn new(size: usize) -> Self {
+    pub(super) const fn new(size: usize) -> Self {
         Self {
             size,
             input: None,
@@ -113,6 +121,46 @@ impl<const F_INDEX: u8> ActivationFunction<F_INDEX> {
         // assert_eq!(self.size, output_error.len());
         Self::F_PRIME(self.input.clone().unwrap()).component_mul(&output_error)
     }
+
+    pub fn to_string_without_size(&self) -> String {
+        match F_INDEX {
+            ABS => stringify!(AF_Abs),
+            BINARY_STEP => stringify!(AF_BinaryStep),
+            ELU => stringify!(AF_Elu),
+            GAUSSIAN => stringify!(AF_Gaussian),
+            LEAKY_RELU => stringify!(AF_LeakyRelu),
+            RELU => stringify!(AF_Relu),
+            SIGMOID => stringify!(AF_Sigmoid),
+            SIGNUM => stringify!(AF_Signum),
+            SIGN_LN_ABS => stringify!(AF_SignLnAbs),
+            SIGN_SQRT_ABS => stringify!(AF_SignSqrtAbs),
+            SILU => stringify!(AF_Silu),
+            SOFT_MAX => stringify!(AF_SoftMax),
+            SOFT_PLUS => stringify!(AF_SoftPlus),
+            TANH => stringify!(AF_Tanh),
+            _ => unreachable!()
+        }.to_string()
+    }
+
+    pub fn to_string_with_size(&self) -> String {
+        match F_INDEX {
+            ABS => format!("{}({})", stringify!(AF_Abs), self.size),
+            BINARY_STEP => format!("{}({})", stringify!(AF_BinaryStep), self.size),
+            ELU => format!("{}({})", stringify!(AF_Elu), self.size),
+            GAUSSIAN => format!("{}({})", stringify!(AF_Gaussian), self.size),
+            LEAKY_RELU => format!("{}({})", stringify!(AF_LeakyRelu), self.size),
+            RELU => format!("{}({})", stringify!(AF_Relu), self.size),
+            SIGMOID => format!("{}({})", stringify!(AF_Sigmoid), self.size),
+            SIGNUM => format!("{}({})", stringify!(AF_Signum), self.size),
+            SIGN_LN_ABS => format!("{}({})", stringify!(AF_SignLnAbs), self.size),
+            SIGN_SQRT_ABS => format!("{}({})", stringify!(AF_SignSqrtAbs), self.size),
+            SILU => format!("{}({})", stringify!(AF_Silu), self.size),
+            SOFT_MAX => format!("{}({})", stringify!(AF_SoftMax), self.size),
+            SOFT_PLUS => format!("{}({})", stringify!(AF_SoftPlus), self.size),
+            TANH => format!("{}({})", stringify!(AF_Tanh), self.size),
+            _ => unreachable!()
+        }
+    }
 }
 
 impl<const F_INDEX: u8> Layer for ActivationFunction<F_INDEX> {
@@ -126,27 +174,6 @@ impl<const F_INDEX: u8> Layer for ActivationFunction<F_INDEX> {
 
     fn backward_propagation(&mut self, output_error: Vector, learning_rate: float) -> Vector {
         self.backward_propagation(output_error, learning_rate)
-    }
-}
-
-impl<const F_INDEX: u8> ToString for ActivationFunction<F_INDEX> {
-    fn to_string(&self) -> String {
-        match F_INDEX {
-            ABS => format!("{}({})", stringify!(AF_Abs), self.size),
-            BINARY_STEP => format!("{}({})", stringify!(AF_BinaryStep), self.size),
-            ELU => format!("{}({})", stringify!(AF_Elu), self.size),
-            GAUSSIAN => format!("{}({})", stringify!(AF_Gaussian), self.size),
-            LEAKY_RELU => format!("{}({})", stringify!(AF_LeakyRelu), self.size),
-            RELU => format!("{}({})", stringify!(AF_Relu), self.size),
-            SIGMOID => format!("{}({})", stringify!(AF_Sigmoid), self.size),
-            SIGNUM => format!("{}({})", stringify!(AF_Signum), self.size),
-            SIGN_SQRT_ABS => format!("{}({})", stringify!(AF_SignSqrtAbs), self.size),
-            SILU => format!("{}({})", stringify!(AF_Silu), self.size),
-            SOFT_MAX => format!("{}({})", stringify!(AF_SoftMax), self.size),
-            SOFT_PLUS => format!("{}({})", stringify!(AF_SoftPlus), self.size),
-            TANH => format!("{}({})", stringify!(AF_Tanh), self.size),
-            _ => unreachable!()
-        }
     }
 }
 

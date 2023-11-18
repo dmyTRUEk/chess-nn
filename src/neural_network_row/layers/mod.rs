@@ -15,6 +15,7 @@ use self::{
 
 
 #[allow(dead_code, non_camel_case_types)]
+#[derive(Debug, Clone, Copy)]
 pub enum LayerSpecs {
     /// Contains `output_size`.
     FullyConnected(usize),
@@ -27,6 +28,7 @@ pub enum LayerSpecs {
     AF_Relu,
     AF_Sigmoid,
     AF_Signum,
+    AF_SignLnAbs,
     AF_SignSqrtAbs,
     AF_Silu,
     AF_SoftMax,
@@ -36,27 +38,49 @@ pub enum LayerSpecs {
 
 impl LayerSpecs {
     pub fn to_layer(&self, input_size: &mut usize) -> BoxDynLayer {
-        type LS = LayerSpecs;
         match *self {
-            LS::FullyConnected(output_size) => {
+            Self::FullyConnected(output_size) => {
                 let fc = Box::new(FullyConnected::new(*input_size, output_size));
                 *input_size = output_size;
                 fc
             },
-            LS::AF_Abs => Box::new(AF_Abs::new(*input_size)),
-            LS::AF_BinaryStep => Box::new(AF_BinaryStep::new(*input_size)),
-            LS::AF_Elu => Box::new(AF_Elu::new(*input_size)),
-            LS::AF_Gaussian => Box::new(AF_Gaussian::new(*input_size)),
-            LS::AF_LeakyRelu => Box::new(AF_LeakyRelu::new(*input_size)),
-            LS::AF_MaxOut => Box::new(AF_MaxOut::new(*input_size)),
-            LS::AF_Relu => Box::new(AF_Relu::new(*input_size)),
-            LS::AF_Sigmoid => Box::new(AF_Sigmoid::new(*input_size)),
-            LS::AF_Signum => Box::new(AF_Signum::new(*input_size)),
-            LS::AF_SignSqrtAbs => Box::new(AF_SignSqrtAbs::new(*input_size)),
-            LS::AF_Silu => Box::new(AF_Silu::new(*input_size)),
-            LS::AF_SoftMax => Box::new(AF_SoftMax::new(*input_size)),
-            LS::AF_SoftPlus => Box::new(AF_SoftPlus::new(*input_size)),
-            LS::AF_Tanh => Box::new(AF_Tanh::new(*input_size)),
+            Self::AF_Abs => Box::new(AF_Abs::new(*input_size)),
+            Self::AF_BinaryStep => Box::new(AF_BinaryStep::new(*input_size)),
+            Self::AF_Elu => Box::new(AF_Elu::new(*input_size)),
+            Self::AF_Gaussian => Box::new(AF_Gaussian::new(*input_size)),
+            Self::AF_LeakyRelu => Box::new(AF_LeakyRelu::new(*input_size)),
+            Self::AF_MaxOut => Box::new(AF_MaxOut::new(*input_size)),
+            Self::AF_Relu => Box::new(AF_Relu::new(*input_size)),
+            Self::AF_Sigmoid => Box::new(AF_Sigmoid::new(*input_size)),
+            Self::AF_Signum => Box::new(AF_Signum::new(*input_size)),
+            Self::AF_SignLnAbs => Box::new(AF_SignLnAbs::new(*input_size)),
+            Self::AF_SignSqrtAbs => Box::new(AF_SignSqrtAbs::new(*input_size)),
+            Self::AF_Silu => Box::new(AF_Silu::new(*input_size)),
+            Self::AF_SoftMax => Box::new(AF_SoftMax::new(*input_size)),
+            Self::AF_SoftPlus => Box::new(AF_SoftPlus::new(*input_size)),
+            Self::AF_Tanh => Box::new(AF_Tanh::new(*input_size)),
+        }
+    }
+
+    pub fn is_activation_function(&self) -> bool {
+        match self {
+            Self::FullyConnected(..) => false,
+            Self::AF_Abs
+            | Self::AF_BinaryStep
+            | Self::AF_Elu
+            | Self::AF_Gaussian
+            | Self::AF_LeakyRelu
+            | Self::AF_MaxOut
+            | Self::AF_Relu
+            | Self::AF_Sigmoid
+            | Self::AF_Signum
+            | Self::AF_SignLnAbs
+            | Self::AF_SignSqrtAbs
+            | Self::AF_Silu
+            | Self::AF_SoftMax
+            | Self::AF_SoftPlus
+            | Self::AF_Tanh
+            => true
         }
     }
 }
@@ -65,7 +89,7 @@ impl LayerSpecs {
 pub type BoxDynLayer = Box<dyn Layer + Send + Sync>;
 
 
-pub trait Layer: CloneLayer + ToString {
+pub trait Layer: CloneLayer {
     /// Returns layer `output` for given [`input`].
     fn forward_propagation(&self, input: Vector) -> Vector;
 

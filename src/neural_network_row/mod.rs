@@ -138,7 +138,8 @@ impl fmt::Display for ChessNeuralNetwork {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let mut res = "ChessNeuralNetwork {".to_string();
         for (i, layer) in self.layers.iter().enumerate() {
-            res += &format!("\nlayer[{i}]: {},", layer.to_string());
+            unimplemented!();
+            // res += &format!("\nlayer[{i}]: {},", layer.to_string());
             res += "\n";
         }
         res += "}\n";

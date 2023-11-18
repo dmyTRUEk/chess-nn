@@ -8,11 +8,14 @@
     file_create_new,
     iter_map_windows,
     let_chains,
+    // negative_bounds,
+    // negative_impls,
     // slice_group_by,
+    test,
 )]
 
 #![deny(
-    dead_code,
+    // dead_code,
     unreachable_patterns,
 )]
 
@@ -27,16 +30,23 @@ use chess::{Action, Board, BoardBuilder, ChessMove, Color, File, Game, GameResul
 use rand::{Rng, seq::SliceRandom, thread_rng};
 use rayon::prelude::{IndexedParallelIterator, IntoParallelIterator, IntoParallelRefMutIterator, ParallelIterator};
 
+mod ai;
+mod ai_player;
+mod ais_generator;
+// mod either;
 mod extensions;
 mod float_type;
 mod linalg_types;
 mod math_aliases;
 mod math_functions;
+// mod math_functions_pade_approx;
 // mod neural_network_col;
 mod neural_network_row;
 mod utils_io;
 
 use crate::{
+    ai_player::AI_Player,
+    ais_generator::{AI_Generator, ActivationFunctions, LayersNumber},
     float_type::float,
     math_aliases::exp,
     neural_network_row::{
@@ -50,16 +60,16 @@ use crate::{
 
 
 const FILENAMES_ALL_DATA: &[&str] = &[
-    "positions/lt_part1_evaluated_2023-11-11_00-18-58",
-    "positions/lt_part2_evaluated_2023-11-12_12-48-37",
-    "positions/lt_part3_evaluated_2023-11-13_09-46-52",
-    "positions/lt_part4_evaluated_2023-11-13_19-26-50",
-    "positions/lt_part5_evaluated_2023-11-16_21-16-25",
-    "positions/pc_part1_evaluated_2023-11-12_15-17-11",
-    "positions/pc_part2_evaluated_2023-11-13_09-35-55",
-    "positions/pc_part3_evaluated_2023-11-13_14-34-22",
-    "positions/pc_part4_evaluated_2023-11-13_18-45-15",
-    "positions/pc_part5_evaluated_2023-11-13_19-27-46",
+    // "positions/lt_part1_evaluated_2023-11-11_00-18-58",
+    // "positions/lt_part2_evaluated_2023-11-12_12-48-37",
+    // "positions/lt_part3_evaluated_2023-11-13_09-46-52",
+    // "positions/lt_part4_evaluated_2023-11-13_19-26-50",
+    // "positions/lt_part5_evaluated_2023-11-16_21-16-25",
+    // "positions/pc_part1_evaluated_2023-11-12_15-17-11",
+    // "positions/pc_part2_evaluated_2023-11-13_09-35-55",
+    // "positions/pc_part3_evaluated_2023-11-13_14-34-22",
+    // "positions/pc_part4_evaluated_2023-11-13_18-45-15",
+    // "positions/pc_part5_evaluated_2023-11-13_19-27-46",
     "positions/pc_part6_evaluated_2023-11-14_09-01-36",
     "positions/pc_part7_evaluated_2023-11-14_13-26-40",
     "positions/pc_part8_evaluated_2023-11-15_09-36-39",
@@ -80,379 +90,51 @@ mod fully_connected_layer_initial_values {
 const TRAIN_TO_TEST_RATIO: float = 0.9;
 
 const NN_INPUT_SIZE: usize = 768; // 2 * 6 * 64
+const NN_OUTPUT_SIZE: usize = 1;
+
+const NUMBER_OF_NNS: usize = 3 * 12; // it's better be multiple of number of cores/threads in your machine, or else...
 
 /// Starting learning rate, gradually decreases with epochs.
-const LEARNING_RATE_0: float = 0.01;
-const LEARNING_RATE_EXP_K: float = 1.;
-const TRAINING_EPOCHS: u32 = 100;
+const LEARNING_RATE_0: float = 0.1;
+const LEARNING_RATE_EXP_K: float = 2.;
+const TRAINING_EPOCHS: usize = 1_000;
 
-const TOURNAMENTS_NUMBER: u32 = 20;
+const TOURNAMENTS_NUMBER: usize = 100;
 const DEFAULT_RATING: float = 1_000.;
 const NN_RESULT_RANDOM_CHOICE: Option<(float, float)> = Some((0.9, 1.1));
-const PLAY_GAME_MOVES_LIMIT: u32 = 500;
+const PLAY_GAME_MOVES_LIMIT: usize = 500;
 
-const PLAY_WITH_NN_AFTER_TRAINING: bool = true;
+const PLAY_WITH_NNS_AFTER_TRAINING: bool = true;
 
 
 
 fn main() {
-    // generate_and_save_random_positions(10_000);
+    // generate_and_save_random_positions(10_000, 200);
     // return;
 
     print_and_flush("Creating Neural Networks... ");
-    let mut ais: Vec<AI> = vec![
-        AI::new(
-            "Weighted Sum",
+    let mut ai_players: Vec<AI_Player> = vec![
+        AI_Player::new(
+            "Weighted Sum".to_string(),
             ChessNeuralNetwork::from_layers_specs(vec![
-                LS::FullyConnected(1),
+                LS::FullyConnected(NN_OUTPUT_SIZE),
             ]),
         ),
-
-        // AI::new(
-        //     "FC 100-10",
-        //     ChessNeuralNetwork::from_layers_specs(vec![
-        //         LS::FullyConnected(100),
-        //         LS::FullyConnected(10),
-        //         LS::FullyConnected(1),
-        //     ]),
-        // ),
-        // AI::new(
-        //     "FC 100-50-20",
-        //     ChessNeuralNetwork::from_layers_specs(vec![
-        //         LS::FullyConnected(100),
-        //         LS::FullyConnected(50),
-        //         LS::FullyConnected(20),
-        //         LS::FullyConnected(1),
-        //     ]),
-        // ),
-
-        // AI::new(
-        //     "FC-Abs 100-10",
-        //     ChessNeuralNetwork::from_layers_specs(vec![
-        //         LS::FullyConnected(100),
-        //         LS::AF_Abs,
-        //         LS::FullyConnected(10),
-        //         LS::AF_Abs,
-        //         LS::FullyConnected(1),
-        //     ]),
-        // ),
-        // AI::new(
-        //     "FC-Abs 100-50-20",
-        //     ChessNeuralNetwork::from_layers_specs(vec![
-        //         LS::FullyConnected(100),
-        //         LS::AF_Abs,
-        //         LS::FullyConnected(50),
-        //         LS::AF_Abs,
-        //         LS::FullyConnected(20),
-        //         LS::AF_Abs,
-        //         LS::FullyConnected(1),
-        //     ]),
-        // ),
-
-        AI::new(
-            "FC-BinaryStep 100-10",
-            ChessNeuralNetwork::from_layers_specs(vec![
-                LS::FullyConnected(100),
-                LS::AF_BinaryStep,
-                LS::FullyConnected(10),
-                LS::AF_BinaryStep,
-                LS::FullyConnected(1),
-            ]),
-        ),
-        AI::new(
-            "FC-BinaryStep 100-50-20",
-            ChessNeuralNetwork::from_layers_specs(vec![
-                LS::FullyConnected(100),
-                LS::AF_BinaryStep,
-                LS::FullyConnected(50),
-                LS::AF_BinaryStep,
-                LS::FullyConnected(20),
-                LS::AF_BinaryStep,
-                LS::FullyConnected(1),
-            ]),
-        ),
-
-        // AI::new(
-        //     "FC-Elu 100-10",
-        //     ChessNeuralNetwork::from_layers_specs(vec![
-        //         LS::FullyConnected(100),
-        //         LS::AF_Elu,
-        //         LS::FullyConnected(10),
-        //         LS::AF_Elu,
-        //         LS::FullyConnected(1),
-        //     ]),
-        // ),
-        // AI::new(
-        //     "FC-Elu 100-50-20",
-        //     ChessNeuralNetwork::from_layers_specs(vec![
-        //         LS::FullyConnected(100),
-        //         LS::AF_Elu,
-        //         LS::FullyConnected(50),
-        //         LS::AF_Elu,
-        //         LS::FullyConnected(20),
-        //         LS::AF_Elu,
-        //         LS::FullyConnected(1),
-        //     ]),
-        // ),
-
-        AI::new(
-            "FC-Gaussian 100-10",
-            ChessNeuralNetwork::from_layers_specs(vec![
-                LS::FullyConnected(100),
-                LS::AF_Gaussian,
-                LS::FullyConnected(10),
-                LS::AF_BinaryStep,
-                LS::FullyConnected(1),
-            ]),
-        ),
-        AI::new(
-            "FC-Gaussian 100-50-20",
-            ChessNeuralNetwork::from_layers_specs(vec![
-                LS::FullyConnected(100),
-                LS::AF_Gaussian,
-                LS::FullyConnected(50),
-                LS::AF_Gaussian,
-                LS::FullyConnected(20),
-                LS::AF_BinaryStep,
-                LS::FullyConnected(1),
-            ]),
-        ),
-
-        // AI::new(
-        //     "FC-LeakyRelu 100-10",
-        //     ChessNeuralNetwork::from_layers_specs(vec![
-        //         LS::FullyConnected(100),
-        //         LS::AF_LeakyRelu,
-        //         LS::FullyConnected(10),
-        //         LS::AF_LeakyRelu,
-        //         LS::FullyConnected(1),
-        //     ]),
-        // ),
-        // AI::new(
-        //     "FC-LeakyRelu 100-50-20",
-        //     ChessNeuralNetwork::from_layers_specs(vec![
-        //         LS::FullyConnected(100),
-        //         LS::AF_LeakyRelu,
-        //         LS::FullyConnected(50),
-        //         LS::AF_LeakyRelu,
-        //         LS::FullyConnected(20),
-        //         LS::AF_LeakyRelu,
-        //         LS::FullyConnected(1),
-        //     ]),
-        // ),
-
-        // TODO: check if activation function implemented correctly.
-        // AI::new(
-        //     "FC-MaxOut 100-10",
-        //     ChessNeuralNetwork::from_layers_specs(vec![
-        //         LS::FullyConnected(100),
-        //         LS::AF_MaxOut,
-        //         LS::FullyConnected(10),
-        //         LS::AF_MaxOut,
-        //         LS::FullyConnected(1),
-        //     ]),
-        // ),
-        // AI::new(
-        //     "AF_MaxOut 100-50-20",
-        //     ChessNeuralNetwork::from_layers_specs(vec![
-        //         LS::FullyConnected(100),
-        //         LS::AF_MaxOut,
-        //         LS::FullyConnected(50),
-        //         LS::AF_MaxOut,
-        //         LS::FullyConnected(20),
-        //         LS::AF_MaxOut,
-        //         LS::FullyConnected(1),
-        //     ]),
-        // ),
-
-        AI::new(
-            "FC-Relu 100-10",
-            ChessNeuralNetwork::from_layers_specs(vec![
-                LS::FullyConnected(100),
-                LS::AF_Relu,
-                LS::FullyConnected(10),
-                LS::AF_Relu,
-                LS::FullyConnected(1),
-            ]),
-        ),
-        AI::new(
-            "FC-Relu 100-50-20",
-            ChessNeuralNetwork::from_layers_specs(vec![
-                LS::FullyConnected(100),
-                LS::AF_Relu,
-                LS::FullyConnected(50),
-                LS::AF_Relu,
-                LS::FullyConnected(20),
-                LS::AF_Relu,
-                LS::FullyConnected(1),
-            ]),
-        ),
-
-        AI::new(
-            "FC-Sigmoid 100-10",
-            ChessNeuralNetwork::from_layers_specs(vec![
-                LS::FullyConnected(100),
-                LS::AF_Sigmoid,
-                LS::FullyConnected(10),
-                LS::AF_Sigmoid,
-                LS::FullyConnected(1),
-            ]),
-        ),
-        AI::new(
-            "FC-Sigmoid 100-50-20",
-            ChessNeuralNetwork::from_layers_specs(vec![
-                LS::FullyConnected(100),
-                LS::AF_Sigmoid,
-                LS::FullyConnected(50),
-                LS::AF_Sigmoid,
-                LS::FullyConnected(20),
-                LS::AF_Sigmoid,
-                LS::FullyConnected(1),
-            ]),
-        ),
-
-        AI::new(
-            "FC-Signum 100-10",
-            ChessNeuralNetwork::from_layers_specs(vec![
-                LS::FullyConnected(100),
-                LS::AF_Signum,
-                LS::FullyConnected(10),
-                LS::AF_Signum,
-                LS::FullyConnected(1),
-            ]),
-        ),
-        AI::new(
-            "FC-Signum 100-50-20",
-            ChessNeuralNetwork::from_layers_specs(vec![
-                LS::FullyConnected(100),
-                LS::AF_Signum,
-                LS::FullyConnected(50),
-                LS::AF_Signum,
-                LS::FullyConnected(20),
-                LS::AF_Signum,
-                LS::FullyConnected(1),
-            ]),
-        ),
-
-        // AI::new(
-        //     "FC-SignSqrtAbs 100-10",
-        //     ChessNeuralNetwork::from_layers_specs(vec![
-        //         LS::FullyConnected(100),
-        //         LS::AF_SignSqrtAbs,
-        //         LS::FullyConnected(10),
-        //         LS::AF_SignSqrtAbs,
-        //         LS::FullyConnected(1),
-        //     ]),
-        // ),
-        // AI::new(
-        //     "FC-SignSqrtAbs 100-50-20",
-        //     ChessNeuralNetwork::from_layers_specs(vec![
-        //         LS::FullyConnected(100),
-        //         LS::AF_SignSqrtAbs,
-        //         LS::FullyConnected(50),
-        //         LS::AF_SignSqrtAbs,
-        //         LS::FullyConnected(20),
-        //         LS::AF_SignSqrtAbs,
-        //         LS::FullyConnected(1),
-        //     ]),
-        // ),
-
-        // AI::new(
-        //     "FC-Silu 100-10",
-        //     ChessNeuralNetwork::from_layers_specs(vec![
-        //         LS::FullyConnected(100),
-        //         LS::AF_Silu,
-        //         LS::FullyConnected(10),
-        //         LS::AF_Silu,
-        //         LS::FullyConnected(1),
-        //     ]),
-        // ),
-        // AI::new(
-        //     "FC-Silu 100-50-20",
-        //     ChessNeuralNetwork::from_layers_specs(vec![
-        //         LS::FullyConnected(100),
-        //         LS::AF_Silu,
-        //         LS::FullyConnected(50),
-        //         LS::AF_Silu,
-        //         LS::FullyConnected(20),
-        //         LS::AF_Silu,
-        //         LS::FullyConnected(1),
-        //     ]),
-        // ),
-
-        // UNIMPLEMENTED
-        // AI::new(
-        //     "FC-SoftMax 100-10",
-        //     ChessNeuralNetwork::from_layers_specs(vec![
-        //         LS::FullyConnected(100),
-        //         LS::AF_SoftMax,
-        //         LS::FullyConnected(10),
-        //         LS::AF_SoftMax,
-        //         LS::FullyConnected(1),
-        //     ]),
-        // ),
-        // AI::new(
-        //     "FC-SoftMax 100-50-20",
-        //     ChessNeuralNetwork::from_layers_specs(vec![
-        //         LS::FullyConnected(100),
-        //         LS::AF_SoftMax,
-        //         LS::FullyConnected(50),
-        //         LS::AF_SoftMax,
-        //         LS::FullyConnected(20),
-        //         LS::AF_SoftMax,
-        //         LS::FullyConnected(1),
-        //     ]),
-        // ),
-
-        // AI::new(
-        //     "FC-SoftPlus 100-10",
-        //     ChessNeuralNetwork::from_layers_specs(vec![
-        //         LS::FullyConnected(100),
-        //         LS::AF_SoftPlus,
-        //         LS::FullyConnected(10),
-        //         LS::AF_SoftPlus,
-        //         LS::FullyConnected(1),
-        //     ]),
-        // ),
-        // AI::new(
-        //     "FC-SoftPlus 100-50-20",
-        //     ChessNeuralNetwork::from_layers_specs(vec![
-        //         LS::FullyConnected(100),
-        //         LS::AF_SoftPlus,
-        //         LS::FullyConnected(50),
-        //         LS::AF_SoftPlus,
-        //         LS::FullyConnected(20),
-        //         LS::AF_SoftPlus,
-        //         LS::FullyConnected(1),
-        //     ]),
-        // ),
-
-        AI::new( // CRAZY BUG??: breaks (gives NaN) on `LEARNING_RATE_0` = 0.1?!?
-            "FC-Tanh 100-10",
-            ChessNeuralNetwork::from_layers_specs(vec![
-                LS::FullyConnected(100),
-                LS::AF_Tanh,
-                LS::FullyConnected(10),
-                LS::AF_Tanh,
-                LS::FullyConnected(1),
-            ]),
-        ),
-        AI::new(
-            "FC-Tanh 100-50-20",
-            ChessNeuralNetwork::from_layers_specs(vec![
-                LS::FullyConnected(100),
-                LS::AF_Tanh,
-                LS::FullyConnected(50),
-                LS::AF_Tanh,
-                LS::FullyConnected(20),
-                LS::AF_Tanh,
-                LS::FullyConnected(1),
-            ]),
-        ),
-
     ];
-    println!("{} created.", ais.len());
-    assert!(ais.len() > 1, "number of AIs should be > 1, else its not interesting, but it is {}", ais.len());
+    ai_players.extend(
+        AI_Generator {
+            multi_af_prob: 0.5,
+            activation_functions: ActivationFunctions::All,
+            layers_number: LayersNumber::Range { min: 2, max: 7 },
+            layers_sizes: vec![200, 150, 100, 80, 60, 50, 35, 20, 10, 5, 3, 2],
+        }
+            .generate(NUMBER_OF_NNS)
+            .into_iter()
+            .map(|ai| AI_Player::from(ai))
+            .collect::<Vec<AI_Player>>()
+    );
+    println!("{} created.", ai_players.len());
+    assert!(ai_players.len() > 1, "number of AIs should be > 1, else its not interesting, but it is {}", ai_players.len());
 
     // let mut rng = thread_rng();
     // ais.shuffle(&mut rng);
@@ -473,31 +155,44 @@ fn main() {
 
     println!("Starting training Neural Networks...\n");
     // TODO?: if NN returns NaN => recreate it few times, else delete it
-    train_nns(&mut ais, train_and_test_data);
+    train_nns(
+        &mut ai_players,
+        train_and_test_data,
+        TrainNNsConfig {
+            remove_ai_if_it_gives_nan: true,
+        }
+    );
 
     println!("Playing {TOURNAMENTS_NUMBER} tournaments to set ratings...");
-    for i in 1..=TOURNAMENTS_NUMBER {
-        print!("#{i}:\t"); flush();
+    for i in 0..TOURNAMENTS_NUMBER {
+        let n = index_to_number(i);
+        print!("#{n}/{TOURNAMENTS_NUMBER}:\t"); flush();
         play_tournament(
-            &mut ais,
+            &mut ai_players,
             PlayTournametConfig {
+                sort: n == TOURNAMENTS_NUMBER,
                 print_games_results: true,
-                print_games: i == TOURNAMENTS_NUMBER,
+                print_games: n == TOURNAMENTS_NUMBER,
             }
         );
     }
-    let ais = ais;
-    fn print_ais_ratings(ais: &Vec<AI>, is_first_time: bool) {
+    let ai_players = ai_players;
+    fn print_ais_ratings(ai_players: &Vec<AI_Player>, is_first_time: bool) {
         let maybe_after_n_tournaments_str = if is_first_time { format!(" after {TOURNAMENTS_NUMBER} tournaments") } else { "".to_string() };
         println!();
         println!("AIs' ratings{maybe_after_n_tournaments_str}:");
-        for (i, ai) in ais.iter().enumerate() {
-            println!("#{i}: {r:.2} - {n}", i=i+1, r=ai.rating, n=ai.name);
+        for (i, ai_player) in ai_players.iter().enumerate() {
+            let n = index_to_number(i);
+            let rating = ai_player.rating;
+            let name = &ai_player.ai.name;
+            println!("#{n}: {rating:.2} - {name}");
         }
     }
-    print_ais_ratings(&ais, true);
+    print_ais_ratings(&ai_players, true);
 
-    if !PLAY_WITH_NN_AFTER_TRAINING { return }
+    if !PLAY_WITH_NNS_AFTER_TRAINING { return }
+
+    // TODO?: assert AIs is sorted by rating.
 
     loop {
         println!("\nWhat do you want to do?");
@@ -518,25 +213,26 @@ fn main() {
             Name(String),
         }
         type NNTPW = NeuralNetworkToPlayWith;
-        let nn_to_play_with: NNTPW = match line.as_str() {
+        let ai_player_to_play_with: NNTPW = match line.as_str() {
             CMD_QUIT_SHORT | CMD_QUIT_FULL => { break }
-            CMD_LIST_SHORT | CMD_LIST_FULL => { print_ais_ratings(&ais, false); continue }
+            CMD_LIST_SHORT | CMD_LIST_FULL => { print_ais_ratings(&ai_players, false); continue }
             CMD_BEST_STR => NNTPW::Best,
             CMD_WORST_STR => NNTPW::Worst,
             text => if let Ok(n) = text.parse::<usize>() {
-                NNTPW::Index(n-1)
+                let i = if let Some(i) = number_to_index_checked(n) { i } else { continue };
+                NNTPW::Index(i)
             } else {
                 let name = text.to_string();
                 NNTPW::Name(name)
             }
         };
-        let ai_to_play_with: &AI = match nn_to_play_with {
-            NNTPW::Best => &ais.first().unwrap(),
-            NNTPW::Worst => &ais.last().unwrap(),
-            NNTPW::Index(index) => if let Some(ai) = ais.get(index) { &ai } else { continue }
-            NNTPW::Name(name) => if let Some(ai) = ais.iter().find(|ai| ai.name == name) { &ai } else { continue }
+        let ai_player_to_play_with: &AI_Player = match ai_player_to_play_with {
+            NNTPW::Best => &ai_players.first().unwrap(),
+            NNTPW::Worst => &ai_players.last().unwrap(),
+            NNTPW::Index(index) => if let Some(ai) = ai_players.get(index) { &ai } else { continue }
+            NNTPW::Name(name) => if let Some(ai) = ai_players.iter().find(|aip| aip.ai.name == name) { &ai } else { continue }
         };
-        let nn_to_play_with: &ChessNeuralNetwork = &ai_to_play_with.nn;
+        let nn_to_play_with: &ChessNeuralNetwork = &ai_player_to_play_with.ai.nn;
         println!("Choose side to play:");
         const CMD_SIDE_TO_PLAY_WHITE_SHORT: &str = "w";
         const CMD_SIDE_TO_PLAY_WHITE_FULL : &str = "white";
@@ -570,28 +266,39 @@ fn main() {
 }
 
 
-fn train_nns(ais: &mut Vec<AI>, train_and_test_data: TrainAndTestData) {
+struct TrainNNsConfig { remove_ai_if_it_gives_nan: bool }
+fn train_nns(ai_players: &mut Vec<AI_Player>, train_and_test_data: TrainAndTestData, config: TrainNNsConfig) {
     let TrainAndTestData { mut train_data, mut test_data } = train_and_test_data;
     let mut rng = thread_rng();
     for epoch in 0..TRAINING_EPOCHS {
         let learning_rate = learning_rate_from_epoch(epoch);
         train_data.xy.shuffle(&mut rng);
         test_data.xy.shuffle(&mut rng);
-        let mut msg = format!("Epoch {ep}/{TRAINING_EPOCHS}:\n", ep=epoch+1);
-        msg += &ais
+        let (msg_parts, is_to_remove_vec): (Vec<String>, Vec<bool>) = ai_players
             // .iter_mut()
             .par_iter_mut()
             .enumerate()
-            .map(|(i, ai)| {
-                let avg_train_error = train_step(&mut ai.nn, &train_data, learning_rate);
-                let avg_test_error = calc_avg_test_error(&ai.nn, &test_data);
-                format!("NN#{i}\tavg train error = {avg_train_error}\tavg test error = {avg_test_error}\t{name}", i=i+1, name=ai.name)
+            .map(|(i, ai_player)| {
+                let avg_train_error = train_step(&mut ai_player.ai.nn, &train_data, learning_rate);
+                let avg_test_error = calc_avg_test_error(&ai_player.ai.nn, &test_data);
+                let is_to_remove = avg_train_error.is_nan() || avg_test_error.is_nan();
+                let n = index_to_number(i);
+                let name = &ai_player.ai.name;
+                (format!("NN#{n}\tavg train error = {avg_train_error}\tavg test error = {avg_test_error}\t{name}"), is_to_remove)
             })
-            // .reduce(|acc, el| acc + " " + &el)
-            // .unwrap_or_default()
-            .collect::<Vec<String>>()
-            .join("\n");
+            .unzip();
+        let mut msg = format!("Epoch {epoch_number}/{TRAINING_EPOCHS}:\n", epoch_number=index_to_number(epoch));
+        msg += &msg_parts.join("\n");
         println!("{msg}\n");
+        if config.remove_ai_if_it_gives_nan {
+            assert_eq!(ai_players.len(), is_to_remove_vec.len());
+            *ai_players = ai_players
+                .iter()
+                .zip(is_to_remove_vec)
+                .filter(|(_ai_player, is_to_remove)| !is_to_remove)
+                .map(|(ai_player, _)| ai_player.clone())
+                .collect();
+        }
     }
 }
 
@@ -627,7 +334,7 @@ fn calc_avg_test_error(nn: &ChessNeuralNetwork, test_data: &AnyData) -> float {
     avg_error.sqrt()
 }
 
-fn learning_rate_from_epoch(epoch: u32) -> float {
+fn learning_rate_from_epoch(epoch: usize) -> float {
     const E: float = TRAINING_EPOCHS as float;
     let e = epoch as float;
     // exp( -e / sqrt(E) )
@@ -731,25 +438,23 @@ fn position_vec_from_string(position_str: &str) -> Vector {
 
 
 #[allow(dead_code)]
-fn generate_and_save_random_positions(fens_number: usize) {
-    let fens = generate_random_positions(fens_number);
+fn generate_and_save_random_positions(fens_number: usize, moves_limit: usize) {
+    let fens = generate_random_positions(fens_number, moves_limit);
     save_random_positions(fens);
 }
 
-fn generate_random_positions(fens_number: usize) -> Vec<String> {
-    let moves_limit = 100;
+fn generate_random_positions(fens_number: usize, moves_limit: usize) -> Vec<String> {
     let mut fens = Vec::with_capacity(fens_number);
     let mut rng = thread_rng();
     while fens.len() < fens_number {
         let mut game = Game::new();
-        for _move_number in 0..2*moves_limit {
+        for _move_number in 0..moves_limit {
             let possible_moves = MoveGen::new_legal(&game.current_position());
             let possible_moves = possible_moves.into_iter().collect::<Vec<_>>();
             let random_move_index = rng.gen_range(0..possible_moves.len());
             let random_move = possible_moves[random_move_index];
             game.make_move(random_move);
-            if game.result().is_some() { break }
-            if game.can_declare_draw() { break }
+            if game.result().is_some() || game.can_declare_draw() { break }
             fens.push(game.current_position().to_string());
         }
     }
@@ -1175,14 +880,14 @@ fn actions_to_string(actions: Vec<Action>) -> String {
 
 
 fn string_to_chess_move(line: &str) -> Option<ChessMove> {
-    if !(4..=5).contains(&line.len()) { return None; }
+    if !(4..=5).contains(&line.len()) { return None }
     let chars: Vec<char> = line.chars().collect();
     let (from_file, from_rank, to_file, to_rank, promote_to) = (chars[0], chars[1], chars[2], chars[3], chars.get(4));
     let from_file = File::from_str(&from_file.to_string()).ok()?;
     let from_rank = Rank::from_str(&from_rank.to_string()).ok()?;
     let to_file = File::from_str(&to_file.to_string()).ok()?;
     let to_rank = Rank::from_str(&to_rank.to_string()).ok()?;
-    if let Some(&promote_to) = promote_to && !"qrbn".contains(promote_to) { return None; }
+    if let Some(&promote_to) = promote_to && !"qrbn".contains(promote_to) { return None }
     let promote_to: Option<Piece> = promote_to.map(|ch| match ch {
         'q' => { Piece::Queen }
         'r' => { Piece::Rook }
@@ -1262,8 +967,8 @@ fn play_game(
 
     maybe_print_position(game.current_position());
 
-    let mut move_number: u32 = 0;
-    while game.result() == None && move_number < 2*PLAY_GAME_MOVES_LIMIT {
+    let mut move_number: usize = 0;
+    while game.result() == None && move_number < PLAY_GAME_MOVES_LIMIT {
         move_number += 1;
         // if config.show_logs {
         //     println!("move_number = {move_number}");
@@ -1287,6 +992,7 @@ fn play_game(
                     continue // go to AI's move
                 },
             };
+            // TODO: const unreachable! / "soft" compile error?
             // DENY REACHABLE CODE
             #[allow(unreachable_code)]
             unreachable!()
@@ -1388,33 +1094,16 @@ fn play_game(
 
 
 
-#[derive(Clone)]
-struct AI {
-    pub name: &'static str,
-    pub nn: ChessNeuralNetwork,
-    pub rating: float,
-}
-
-impl AI {
-    fn new(name: &'static str, nn: ChessNeuralNetwork) -> Self {
-        Self {
-            name,
-            nn,
-            rating: DEFAULT_RATING,
-        }
-    }
-}
-
 fn elo_rating_delta(x: float) -> float {
     100. / ( 1. + (10. as float).powf(x / 400.) )
 }
 
 const MOVES_NOT_PROVIDED: &str = "moves not provided";
 
-struct PlayTournametConfig { print_games_results: bool, print_games: bool }
+struct PlayTournametConfig { sort: bool, print_games_results: bool, print_games: bool }
 /// Plays tournament and sorts AIs.
-fn play_tournament(ais: &mut Vec<AI>, config: PlayTournametConfig) {
-    let ais_number = ais.len();
+fn play_tournament(ai_players: &mut Vec<AI_Player>, config: PlayTournametConfig) {
+    let ais_number = ai_players.len();
 
     let mut tournament_statistics: HashMap<Winner, u32> = HashMap::new();
 
@@ -1422,7 +1111,7 @@ fn play_tournament(ais: &mut Vec<AI>, config: PlayTournametConfig) {
         .collect::<Vec<usize>>()
         .into_par_iter()
         .map(|ij| (ij / ais_number, ij % ais_number))
-        .map(|(i, j)| if i != j { Some((ais[i].nn.clone(), ais[j].nn.clone())) } else { None })
+        .map(|(i, j)| if i != j { Some((ai_players[i].ai.nn.clone(), ai_players[j].ai.nn.clone())) } else { None })
         .map(|option_ai_ij| {
             option_ai_ij.map(|(ai_i, ai_j)| {
                 let game_res = play_game(&ai_i, &ai_j, PlayGameConfig::none());
@@ -1451,7 +1140,7 @@ fn play_tournament(ais: &mut Vec<AI>, config: PlayTournametConfig) {
             let counter = tournament_statistics.entry(winner).or_insert(0);
             *counter += 1;
 
-            (ais[i].rating, ais[j].rating) = updated_ratings(ais[i].rating, ais[j].rating, winner);
+            (ai_players[i].rating, ai_players[j].rating) = updated_ratings(ai_players[i].rating, ai_players[j].rating, winner);
             // if SHOW_TRAINING_LOGS {
             //     println!("new ratings: i={}, j={}", player_i.rating, player_j.rating);
             //     println!();
@@ -1468,13 +1157,14 @@ fn play_tournament(ais: &mut Vec<AI>, config: PlayTournametConfig) {
         println!();
     }
 
-    // sort AIs:
-    ais.sort_by(|ai1, ai2| ai2.rating.partial_cmp(&ai1.rating).unwrap());
+    if config.sort {
+        ai_players.sort_by(|ai1, ai2| ai2.rating.partial_cmp(&ai1.rating).unwrap());
+    }
 
     if config.print_games {
         println!("\nstats: {:?}", tournament_statistics);
 
-        let ratings: Vec<float> = ais
+        let ratings: Vec<float> = ai_players
             .iter()
             .map(|p| p.rating)
             .collect();
@@ -1486,10 +1176,11 @@ fn play_tournament(ais: &mut Vec<AI>, config: PlayTournametConfig) {
         println!("final ratings (sorted): [{ratings_str}]");
         println!();
 
+        assert!(config.sort);
         {
             let (winner, game_moves) = play_game(
-                &ais[0].nn,
-                &ais[0].nn,
+                &ai_players[0].ai.nn,
+                &ai_players[0].ai.nn,
                 PlayGameConfig {
                     get_game_moves: true,
                     ..PlayGameConfig::none()
@@ -1504,8 +1195,8 @@ fn play_tournament(ais: &mut Vec<AI>, config: PlayTournametConfig) {
 
         {
             let (winner, game_moves) = play_game(
-                &ais[0].nn,
-                &ais[1].nn,
+                &ai_players[0].ai.nn,
+                &ai_players[1].ai.nn,
                 PlayGameConfig {
                     get_game_moves: true,
                     ..PlayGameConfig::none()
@@ -1520,8 +1211,8 @@ fn play_tournament(ais: &mut Vec<AI>, config: PlayTournametConfig) {
 
         {
             let (winner, game_moves) = play_game(
-                &ais[0].nn,
-                &ais.last().unwrap().nn,
+                &ai_players[0].ai.nn,
+                &ai_players.last().unwrap().ai.nn,
                 PlayGameConfig {
                     get_game_moves: true,
                     ..PlayGameConfig::none()
@@ -1536,8 +1227,8 @@ fn play_tournament(ais: &mut Vec<AI>, config: PlayTournametConfig) {
 
         {
             let (winner, game_moves) = play_game(
-                &ais.last().unwrap().nn,
-                &ais.last().unwrap().nn,
+                &ai_players.last().unwrap().ai.nn,
+                &ai_players.last().unwrap().ai.nn,
                 PlayGameConfig {
                     get_game_moves: true,
                     ..PlayGameConfig::none()
@@ -1586,5 +1277,75 @@ fn updated_ratings(mut white_rating: float, mut black_rating: float, winner: Win
         }
     }
     (white_rating, black_rating)
+}
+
+
+
+// BENCHMARKS:
+
+#[cfg(test)]
+mod benchmarks {
+    extern crate test;
+    use test::{Bencher, black_box};
+    use rand::{Rng, thread_rng};
+    use crate::float_type::float;
+
+    mod af_straightforward_vs_pade_approx {
+        use super::*;
+        mod sigmoid {
+            use super::*;
+            const X_MIN: float = -10.;
+            const X_MAX: float = 10.;
+            #[bench]
+            fn straightforward(bencher: &mut Bencher) {
+                use crate::math_functions::sigmoid;
+                // TODO?: make `static mut`
+                let x = thread_rng().gen_range(X_MIN..X_MAX);
+                bencher.iter(|| {
+                    let x = black_box(x);
+                    sigmoid(x)
+                })
+            }
+            #[bench]
+            #[ignore]
+            fn pade_approx(bencher: &mut Bencher) {
+                // use crate::math_functions_pade_approx::sigmoid;
+                let x = thread_rng().gen_range(X_MIN..X_MAX);
+                bencher.iter(|| {
+                    let x = black_box(x);
+                    // sigmoid(x)
+                })
+            }
+        }
+        // mod sigmoid_v {
+        //     use super::*;
+        //     mod straightforward {
+        //         use super::*;
+        //         #[bench]
+        //         fn _1(bencher: &mut Bencher) {
+        //             const N: usize = 1;
+        //             bencher.iter(|| {
+        //                 sigmoid_v()
+        //             })
+        //         }
+        //     }
+        // }
+        // TODO: mod tanh {}
+    }
+
+}
+
+
+
+fn index_to_number(i: usize) -> usize {
+    // bc if index is 0 then it's number 1, 1=>2, 2=>3, and so on
+    i + 1
+}
+fn number_to_index(n: usize) -> usize {
+    assert!(n > 0);
+    n - 1
+}
+fn number_to_index_checked(n: usize) -> Option<usize> {
+    if n > 0 { Some(n - 1) } else { None }
 }
 
