@@ -10,6 +10,7 @@
     let_chains,
     // negative_bounds,
     // negative_impls,
+    never_type,
     // slice_group_by,
     test,
 )]
@@ -979,7 +980,7 @@ fn play_game(
         // if vs human
         if let Some(human_color) = config.human_color && human_color == side_to_move {
             let move_by_human = get_move_from_human(&game);
-            match move_by_human {
+            let _: ! = match move_by_human {
                 MoveByHuman::Quit => {
                     return (Err(PlayGameError::Quit), None)
                 }
@@ -990,12 +991,10 @@ fn play_game(
                 MoveByHuman::Move(move_) => {
                     game.make_move(move_);
                     continue // go to AI's move
-                },
+                }
             };
-            // TODO: const unreachable! / "soft" compile error?
-            // DENY REACHABLE CODE
-            #[allow(unreachable_code)]
-            unreachable!()
+            // This place is totally unreachable because `!`(never-type) is used above.
+            // Or use `::std::convert::Infallible` if you want to aviod using feature / do it on stable
         }
 
         let nn_to_make_move = match side_to_move {
