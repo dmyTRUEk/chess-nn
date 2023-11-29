@@ -1,10 +1,9 @@
 //! Input/Output Utils
 
-use std::io::Write;
-
 
 pub fn flush() {
-    std::io::stdout().flush().unwrap();
+    use std::io::{Write, stdout};
+    stdout().flush().unwrap();
 }
 
 pub fn print_and_flush<T: std::fmt::Display>(t: T) {
@@ -14,12 +13,15 @@ pub fn print_and_flush<T: std::fmt::Display>(t: T) {
 
 
 pub fn read_line() -> String {
+    use std::io::stdin;
     let mut line: String = String::new();
-    std::io::stdin().read_line(&mut line).unwrap();
+    stdin().read_line(&mut line).unwrap();
     line.trim().to_string()
 }
 
 pub fn wait_for_enter() {
+    // No need to "optimize" it be reimplementing without `.trim()` and `.to_string()`
+    // bc it's anyway waiting for user to press enter.
     let _ = read_line();
 }
 

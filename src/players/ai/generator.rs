@@ -5,34 +5,35 @@ use rand::{Rng, rngs::ThreadRng, thread_rng};
 use crate::{
     NN_INPUT_SIZE,
     NN_OUTPUT_SIZE,
-    ai::AI,
+    ais_generator_consts,
     float_type::float,
-    neural_network_row::{layers::LayerSpecs, ChessNeuralNetwork},
+    neural_network_row::{ChessNeuralNetwork, layers::LayerSpecs},
 };
 
+use super::ai::AI;
 
 
-#[allow(non_camel_case_types)]
-pub struct AI_Generator {
+
+pub struct AIsGenerator {
     /// Probability of using different Activation Functions in NN.
     pub multi_af_prob: float,
     pub activation_functions: ActivationFunctions,
     pub layers_number: LayersNumber,
-    pub layers_sizes: Vec<usize>,
+    pub layers_sizes: &'static [usize],
 }
 
-impl AI_Generator {
+impl AIsGenerator {
     pub fn generate(&self, n: usize) -> Vec<AI> {
         if let ActivationFunctions::Specific(activation_functions) = &self.activation_functions {
             assert!(activation_functions.iter().all(|maybe_af| maybe_af.is_activation_function()))
         }
-        match &self.layers_number {
+        match self.layers_number {
             LayersNumber::All => {}
             LayersNumber::Range { min, max } => {
-                assert!(*min <= *max);
-                assert!(*max <= self.layers_sizes.len());
+                assert!(min <= max);
+                assert!(max <= self.layers_sizes.len());
             }
-            LayersNumber::Specific(layers_numbers) => {
+            LayersNumber::Specific(ref layers_numbers) => {
                 assert!(layers_numbers.iter().all(|&layers_number| layers_number <= self.layers_sizes.len()));
             }
         }
@@ -87,14 +88,25 @@ impl AI_Generator {
         } else {
             name_parts_joined
         };
-        AI {
-            name: final_name,
-            nn: ChessNeuralNetwork::from_layers_specs(layers),
+        AI::new(
+            final_name,
+            ChessNeuralNetwork::from_layers_specs(layers),
+        )
+    }
+}
+
+impl Default for AIsGenerator {
+    fn default() -> Self {
+        AIsGenerator {
+            multi_af_prob: ais_generator_consts::MULTI_AF_PROB,
+            activation_functions: ais_generator_consts::ACTIVATION_FUNCTIONS,
+            layers_number: ais_generator_consts::LAYERS_NUMBER,
+            layers_sizes: ais_generator_consts::LAYERS_SIZES,
         }
     }
 }
 
-#[allow(dead_code)]
+#[expect(dead_code)]
 pub enum LayersNumber {
     All,
     /// Inclusive range
@@ -105,41 +117,40 @@ pub enum LayersNumber {
     Specific(Vec<usize>),
 }
 
+#[expect(dead_code)]
 pub enum ActivationFunctions {
     All,
-    #[allow(dead_code)]
     Specific(Vec<LayerSpecs>),
 }
 impl ActivationFunctions {
+    fn gen(&self) -> LayerSpecs {
+        self.gen_with_rng(&mut thread_rng())
+    }
     fn gen_with_rng(&self, rng: &mut ThreadRng) -> LayerSpecs {
         match self {
             Self::All => {
-                const AF_AMOUNT: usize = 13;
                 use LayerSpecs::*;
-                match rng.gen_range(0..AF_AMOUNT) {
-                    0 => AF_Abs,
-                    1 => AF_BinaryStep,
-                    2 => AF_Elu,
-                    3 => AF_Gaussian,
-                    4 => AF_LeakyRelu,
-                    // 0 => AF_MaxOut,
-                    5 => AF_Relu,
-                    6 => AF_Sigmoid,
-                    7 => AF_Signum,
-                    8 => AF_SignLnAbs,
-                    9 => AF_SignSqrtAbs,
-                    10 => AF_Silu,
-                    // 0 => AF_SoftMax,
-                    11 => AF_SoftPlus,
-                    12 => AF_Tanh,
-                    _ => unreachable!()
-                }
+                const AFS: &[LayerSpecs] = &[
+                    AF_Abs,
+                    AF_BinaryStep,
+                    AF_Elu,
+                    AF_Gaussian,
+                    AF_LeakyRelu,
+                    // AF_MaxOut,
+                    AF_Relu,
+                    AF_Sigmoid,
+                    AF_Signum,
+                    AF_Silu,
+                    // AF_SoftMax,
+                    AF_SoftPlus,
+                    AF_SymLn,
+                    AF_SymSqrt,
+                    AF_Tanh,
+                ];
+                AFS[rng.gen_range(0..AFS.len())]
             }
             Self::Specific(activation_functions) => activation_functions[rng.gen_range(0..activation_functions.len())],
         }
-    }
-    fn gen(&self) -> LayerSpecs {
-        self.gen_with_rng(&mut thread_rng())
     }
 }
 

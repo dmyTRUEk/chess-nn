@@ -1,6 +1,6 @@
 //! Fully Connected Layer
 
-use rand::{thread_rng, Rng};
+use rand::{Rng, thread_rng};
 
 use crate::{
     float_type::float,

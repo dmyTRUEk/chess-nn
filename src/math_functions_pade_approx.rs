@@ -1,6 +1,6 @@
 //! Math functions using Padé approximant.
 
-#![allow(dead_code)]
+#![expect(dead_code)]
 
 use crate::{
     Vector, // from main

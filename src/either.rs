@@ -1,6 +1,6 @@
 //! Either type.
 
-#![allow(dead_code)]
+#![expect(dead_code)]
 
 
 pub enum Either<L, R> {

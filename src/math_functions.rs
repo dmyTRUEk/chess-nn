@@ -87,21 +87,6 @@ pub fn signum_prime(_x: float) -> float {
     0.
 }
 
-pub fn sign_ln_abs(x: float) -> float {
-    signum(x) * ln(abs(x)+1.)
-}
-pub fn sign_ln_abs_prime(x: float) -> float {
-    signum(x) * x / (abs(x) + x.powi(2))
-}
-
-pub fn sign_sqrt_abs(x: float) -> float {
-    signum(x) * sqrt(abs(x))
-}
-pub fn sign_sqrt_abs_prime(x: float) -> float {
-    const MAX_VALUE: float = 1e1;
-    0.5 * signum(x) / sqrt(abs(x)).min(MAX_VALUE)
-}
-
 // Only vectorized forms exists
 // pub fn soft_max(x: float) -> float {}
 // pub fn soft_max_prime(x: float) -> float {}
@@ -111,6 +96,21 @@ pub fn soft_plus(x: float) -> float {
 }
 pub fn soft_plus_prime(x: float) -> float {
     1. / (1. + exp(-x))
+}
+
+pub fn sym_ln(x: float) -> float {
+    signum(x) * ln(abs(x)+1.)
+}
+pub fn sym_ln_prime(x: float) -> float {
+    signum(x) * x / (abs(x) + x.powi(2))
+}
+
+pub fn sym_sqrt(x: float) -> float {
+    signum(x) * sqrt(abs(x))
+}
+pub fn sym_sqrt_prime(x: float) -> float {
+    const MAX_VALUE: float = 1e1;
+    0.5 * signum(x) / sqrt(abs(x)).min(MAX_VALUE)
 }
 
 // pub fn tanh(x: float) -> float {
@@ -203,20 +203,6 @@ pub fn signum_prime_v(v: Vector) -> Vector {
     v.map(signum_prime)
 }
 
-pub fn sign_ln_abs_v(v: Vector) -> Vector {
-    v.map(sign_ln_abs)
-}
-pub fn sign_ln_abs_prime_v(v: Vector) -> Vector {
-    v.map(sign_ln_abs_prime)
-}
-
-pub fn sign_sqrt_abs_v(v: Vector) -> Vector {
-    v.map(sign_sqrt_abs)
-}
-pub fn sign_sqrt_abs_prime_v(v: Vector) -> Vector {
-    v.map(sign_sqrt_abs_prime)
-}
-
 // pub fn soft_max_v(v: Vector) -> Vector {
 //     let exp_v = v.map(exp);
 //     let exp_sum: float = exp_v.sum();
@@ -230,6 +216,7 @@ pub fn soft_max_v(mut v: Vector) -> Vector {
     let exp_sum: float = exp_v.sum();
     exp_v / exp_sum
 }
+#[expect(unused_variables)]
 pub fn soft_max_prime_v(v: Vector) -> Vector {
     todo!()
 }
@@ -239,6 +226,20 @@ pub fn soft_plus_v(v: Vector) -> Vector {
 }
 pub fn soft_plus_prime_v(v: Vector) -> Vector {
     v.map(soft_plus_prime)
+}
+
+pub fn sym_ln_v(v: Vector) -> Vector {
+    v.map(sym_ln)
+}
+pub fn sym_ln_prime_v(v: Vector) -> Vector {
+    v.map(sym_ln_prime)
+}
+
+pub fn sym_sqrt_v(v: Vector) -> Vector {
+    v.map(sym_sqrt)
+}
+pub fn sym_sqrt_prime_v(v: Vector) -> Vector {
+    v.map(sym_sqrt_prime)
 }
 
 pub fn tanh_v(v: Vector) -> Vector {

@@ -6,10 +6,7 @@ pub mod vector_type;
 
 use std::fmt;
 
-use crate::{
-    NN_INPUT_SIZE,
-    float_type::float,
-};
+use crate::{NN_INPUT_SIZE, float_type::float};
 
 use self::{
     layers::{BoxDynLayer, LayerSpecs},
@@ -29,6 +26,7 @@ impl ChessNeuralNetwork {
         let mut layers = Vec::<BoxDynLayer>::with_capacity(layers_specs.len());
         let mut input_size: usize = NN_INPUT_SIZE;
         for layer_specs in layers_specs {
+            // TODO(refactor): dont pass `&mut`, but get updated and set it here.
             layers.push(layer_specs.to_layer(&mut input_size));
         }
         Self { layers }
@@ -45,6 +43,7 @@ impl ChessNeuralNetwork {
             input = o;
         }
         let output = output.unwrap();
+        // TODO?: assert_eq 1 and NN_OUTPUT_SIZE
         assert_eq!(1, output.len(), "NN output must be one, but it was not");
         output[0]
     }
@@ -135,6 +134,7 @@ impl ChessNeuralNetwork {
 
 
 impl fmt::Display for ChessNeuralNetwork {
+    #[expect(unreachable_code, unused_variables)]
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let mut res = "ChessNeuralNetwork {".to_string();
         for (i, layer) in self.layers.iter().enumerate() {

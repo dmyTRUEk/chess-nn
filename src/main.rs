@@ -6,8 +6,10 @@
     // adt_const_params,
     // const_trait_impl,
     file_create_new,
+    get_many_mut,
     iter_map_windows,
     let_chains,
+    lint_reasons,
     // negative_bounds,
     // negative_impls,
     never_type,
@@ -24,38 +26,37 @@
 use std::{
     cmp::Ordering,
     collections::HashMap,
+    hash::Hash,
     str::FromStr,
 };
 
-use chess::{Action, Board, BoardBuilder, ChessMove, Color, File, Game, GameResult, MoveGen, Piece, Rank, Square};
+use chess::{ALL_SQUARES, Action, Board, BoardBuilder, ChessMove, Color, Game, GameResult, MoveGen, Piece};
+use players::{Player, rating::update_ratings};
 use rand::{Rng, seq::SliceRandom, thread_rng};
 use rayon::prelude::{IndexedParallelIterator, IntoParallelIterator, IntoParallelRefMutIterator, ParallelIterator};
 
-mod ai;
-mod ai_player;
-mod ais_generator;
 // mod either;
-mod extensions;
 mod float_type;
 mod linalg_types;
 mod math_aliases;
 mod math_functions;
 // mod math_functions_pade_approx;
-// mod neural_network_col;
 mod neural_network_row;
+mod players;
 mod utils_io;
 
 use crate::{
-    ai_player::AI_Player,
-    ais_generator::{AI_Generator, ActivationFunctions, LayersNumber},
     float_type::float,
     math_aliases::exp,
-    neural_network_row::{
-        ChessNeuralNetwork,
-        layers::LayerSpecs as LS,
-        vector_type::Vector,
+    neural_network_row::{ChessNeuralNetwork, layers::LayerSpecs as LS, vector_type::Vector},
+    players::{
+        BoxDynPlayer,
+        MaybeChessMove,
+        ai::{AIwithRating, ai::AI, generator::AIsGenerator},
+        human::Human,
+        rating::Rating,
     },
-    utils_io::{flush, print_and_flush, prompt, wait_for_enter},
+    utils_io::{print_and_flush, prompt, wait_for_enter},
 };
 
 
@@ -82,30 +83,54 @@ const FILENAME_TO_SAVE_POSITIONS: &str = "positions/lt_or_pc_partN";
 
 mod fully_connected_layer_initial_values {
     use crate::float_type::float;
-    pub const W_MIN: float = -0.15; // this fixes getting NaN for at least Relu & Gaussian
+    // TODO: experiment with these values (set +-1), bc now they should work bc of depth channels
+    pub const W_MIN: float = -0.15; // this fixes getting NaN for at least Relu & Gaussian?
     pub const W_MAX: float =  0.1;
     pub const S_MIN: float = -0.1;
     pub const S_MAX: float =  0.1;
 }
 
-const TRAIN_TO_TEST_RATIO: float = 0.9;
-
-const NN_INPUT_SIZE: usize = 768; // 2 * 6 * 64
+// const NUMBER_OF_DEPTH_CHANNELS: NumberOfDepthChannels = NumberOfDepthChannels::Two;
+const NUMBER_OF_DEPTH_CHANNELS: NumberOfDepthChannels = NumberOfDepthChannels::Three { use_opposite_signs: false };
+// const NUMBER_OF_DEPTH_CHANNELS: NumberOfDepthChannels = NumberOfDepthChannels::Four;
+const NUMBER_OF_DIFFERENT_CHESS_PIECES: usize = chess::NUM_PIECES;  // TODO: assert_eq 6
+const NUMBER_OF_SQUARES_ON_CHESS_BOARD: usize = chess::NUM_SQUARES; // TODO: assert_eq 64
+const NN_INPUT_SIZE: usize = { // 768 or 1152 or 1536
+    NUMBER_OF_DEPTH_CHANNELS.discriminant()
+    * NUMBER_OF_DIFFERENT_CHESS_PIECES
+    * NUMBER_OF_SQUARES_ON_CHESS_BOARD
+};
 const NN_OUTPUT_SIZE: usize = 1;
 
-const NUMBER_OF_NNS: usize = 3 * 12; // it's better be multiple of number of cores/threads in your machine, or else...
+mod ais_generator_consts {
+    use crate::{
+        players::ai::generator::{ActivationFunctions, LayersNumber},
+        float_type::float,
+    };
+    pub const MULTI_AF_PROB: float = 0.5;
+    pub const ACTIVATION_FUNCTIONS: ActivationFunctions = ActivationFunctions::All;
+    pub const LAYERS_NUMBER: LayersNumber = LayersNumber::Range { min: 2, max: 7 };
+    pub const LAYERS_SIZES: &[usize] = &[200, 150, 100, 80, 60, 50, 35, 20, 10, 5, 3, 2];
+}
+
+const NUMBER_OF_NNS: usize = 3 * 12; // it's better be multiple of number of cores/threads on your machine, or else...
+
+const TRAIN_TO_TEST_RATIO: float = 0.9;
 
 /// Starting learning rate, gradually decreases with epochs.
 const LEARNING_RATE_0: float = 0.1;
 const LEARNING_RATE_EXP_K: float = 2.;
-const TRAINING_EPOCHS: usize = 1_000;
+const TRAINING_EPOCHS: usize = 100;
+// TODO(feat): const for use depth analysis when training?
 
-const TOURNAMENTS_NUMBER: usize = 100;
+const TOURNAMENTS_NUMBER: usize = 3;
 const DEFAULT_RATING: float = 1_000.;
 const NN_RESULT_RANDOM_CHOICE: Option<(float, float)> = Some((0.9, 1.1));
-const PLAY_GAME_MOVES_LIMIT: usize = 500;
+const PLAY_GAME_MOVES_LIMIT: usize = 200;
 
 const PLAY_WITH_NNS_AFTER_TRAINING: bool = true;
+// TODO(feat): separately for tournament and play with human (maybe even not const?).
+const CHESS_NN_THINK_DEPTH: u8 = 2;
 
 
 
@@ -114,25 +139,20 @@ fn main() {
     // return;
 
     print_and_flush("Creating Neural Networks... ");
-    let mut ai_players: Vec<AI_Player> = vec![
-        AI_Player::new(
+    let mut ai_players: Vec<AIwithRating> = vec![
+        AIwithRating::new(AI::new(
             "Weighted Sum".to_string(),
             ChessNeuralNetwork::from_layers_specs(vec![
                 LS::FullyConnected(NN_OUTPUT_SIZE),
             ]),
-        ),
+        )),
     ];
     ai_players.extend(
-        AI_Generator {
-            multi_af_prob: 0.5,
-            activation_functions: ActivationFunctions::All,
-            layers_number: LayersNumber::Range { min: 2, max: 7 },
-            layers_sizes: vec![200, 150, 100, 80, 60, 50, 35, 20, 10, 5, 3, 2],
-        }
+        AIsGenerator::default()
             .generate(NUMBER_OF_NNS)
             .into_iter()
-            .map(|ai| AI_Player::from(ai))
-            .collect::<Vec<AI_Player>>()
+            .map(|ai| AIwithRating::new(ai))
+            .collect::<Vec<AIwithRating>>()
     );
     println!("{} created.", ai_players.len());
     assert!(ai_players.len() > 1, "number of AIs should be > 1, else its not interesting, but it is {}", ai_players.len());
@@ -140,7 +160,7 @@ fn main() {
     // let mut rng = thread_rng();
     // ais.shuffle(&mut rng);
 
-    print!("Loading data from {} files... ", FILENAMES_ALL_DATA.len()); flush();
+    print_and_flush(format!("Loading data from {} files... ", FILENAMES_ALL_DATA.len()));
     let all_data = load_all_data_str(FILENAMES_ALL_DATA);
     println!("{} lines loaded.", all_data.len());
 
@@ -148,7 +168,7 @@ fn main() {
     let all_data = AnyData::from(all_data);
     println!("{} samples loaded.", all_data.xy.len());
 
-    print!("Splitting data to train and test datasets with `train/test ratio`={TRAIN_TO_TEST_RATIO}... "); flush();
+    print_and_flush(format!("Splitting data to train and test datasets with `train/test ratio`={TRAIN_TO_TEST_RATIO}... "));
     let train_and_test_data = TrainAndTestData::from(all_data, TRAIN_TO_TEST_RATIO);
     println!("Done.");
 
@@ -167,7 +187,7 @@ fn main() {
     println!("Playing {TOURNAMENTS_NUMBER} tournaments to set ratings...");
     for i in 0..TOURNAMENTS_NUMBER {
         let n = index_to_number(i);
-        print!("#{n}/{TOURNAMENTS_NUMBER}:\t"); flush();
+        print_and_flush(format!("#{n}/{TOURNAMENTS_NUMBER}:\t"));
         play_tournament(
             &mut ai_players,
             PlayTournametConfig {
@@ -178,14 +198,14 @@ fn main() {
         );
     }
     let ai_players = ai_players;
-    fn print_ais_ratings(ai_players: &Vec<AI_Player>, is_first_time: bool) {
+    fn print_ais_ratings(ai_players: &Vec<AIwithRating>, is_first_time: bool) {
         let maybe_after_n_tournaments_str = if is_first_time { format!(" after {TOURNAMENTS_NUMBER} tournaments") } else { "".to_string() };
         println!();
         println!("AIs' ratings{maybe_after_n_tournaments_str}:");
         for (i, ai_player) in ai_players.iter().enumerate() {
             let n = index_to_number(i);
-            let rating = ai_player.rating;
-            let name = &ai_player.ai.name;
+            let rating = ai_player.get_rating().get();
+            let name = ai_player.get_ai().get_name();
             println!("#{n}: {rating:.2} - {name}");
         }
     }
@@ -214,7 +234,7 @@ fn main() {
             Name(String),
         }
         type NNTPW = NeuralNetworkToPlayWith;
-        let ai_player_to_play_with: NNTPW = match line.as_str() {
+        let ai_to_play_with: NNTPW = match line.as_str() {
             CMD_QUIT_SHORT | CMD_QUIT_FULL => { break }
             CMD_LIST_SHORT | CMD_LIST_FULL => { print_ais_ratings(&ai_players, false); continue }
             CMD_BEST_STR => NNTPW::Best,
@@ -227,13 +247,13 @@ fn main() {
                 NNTPW::Name(name)
             }
         };
-        let ai_player_to_play_with: &AI_Player = match ai_player_to_play_with {
-            NNTPW::Best => &ai_players.first().unwrap(),
-            NNTPW::Worst => &ai_players.last().unwrap(),
-            NNTPW::Index(index) => if let Some(ai) = ai_players.get(index) { &ai } else { continue }
-            NNTPW::Name(name) => if let Some(ai) = ai_players.iter().find(|aip| aip.ai.name == name) { &ai } else { continue }
+        let ai_to_play_with: &AIwithRating = match ai_to_play_with {
+            NNTPW::Best => ai_players.first().unwrap(),
+            NNTPW::Worst => ai_players.last().unwrap(),
+            NNTPW::Index(index) => if let Some(ai) = ai_players.get(index) { ai } else { continue }
+            NNTPW::Name(name) => if let Some(ai) = ai_players.iter().find(|aip| aip.get_ai().get_name() == name) { ai } else { continue }
         };
-        let nn_to_play_with: &ChessNeuralNetwork = &ai_player_to_play_with.ai.nn;
+        let ai_to_play_with: BoxDynPlayer = Box::new(ai_to_play_with.get_ai());
         println!("Choose side to play:");
         const CMD_SIDE_TO_PLAY_WHITE_SHORT: &str = "w";
         const CMD_SIDE_TO_PLAY_WHITE_FULL : &str = "white";
@@ -250,10 +270,14 @@ fn main() {
         };
         let config = PlayGameConfig {
             wait_for_enter_after_every_move: false,
-            ..PlayGameConfig::all(human_side_to_play)
+            ..PlayGameConfig::all()
         };
         println!("Good luck! In any unclear situation use `s` to surrender or `q` to quit.");
-        let (winner, game_moves) = play_game(&nn_to_play_with, &nn_to_play_with, config);
+        let (player_white, player_black): (BoxDynPlayer, BoxDynPlayer) = match human_side_to_play {
+            Color::White => (Box::new(&Human), ai_to_play_with),
+            Color::Black => (ai_to_play_with, Box::new(&Human)),
+        };
+        let (winner, game_moves) = play_game(player_white, player_black, config);
         let Ok(winner) = winner else { continue };
         println!(
             "{who_vs_who}: winner={winner:?}, moves: ' {moves} '\n",
@@ -261,31 +285,31 @@ fn main() {
                 Color::White => "HUMAN vs NN_BEST",
                 Color::Black => "NN_BEST vs HUMAN",
             },
-            moves = game_moves.unwrap_or(MOVES_NOT_PROVIDED.to_string()),
+            moves = game_moves.unwrap_or(MOVES_WASNT_PROVIDED.to_string()),
         );
     }
 }
 
 
 struct TrainNNsConfig { remove_ai_if_it_gives_nan: bool }
-fn train_nns(ai_players: &mut Vec<AI_Player>, train_and_test_data: TrainAndTestData, config: TrainNNsConfig) {
+fn train_nns(ai_players: &mut Vec<AIwithRating>, train_and_test_data: TrainAndTestData, config: TrainNNsConfig) {
     let TrainAndTestData { mut train_data, mut test_data } = train_and_test_data;
     let mut rng = thread_rng();
     for epoch in 0..TRAINING_EPOCHS {
         let learning_rate = learning_rate_from_epoch(epoch);
         train_data.xy.shuffle(&mut rng);
         test_data.xy.shuffle(&mut rng);
-        let (msg_parts, is_to_remove_vec): (Vec<String>, Vec<bool>) = ai_players
+        let (is_to_remove_vec, msg_parts): (Vec<bool>, Vec<String>) = ai_players
             // .iter_mut()
             .par_iter_mut()
             .enumerate()
             .map(|(i, ai_player)| {
-                let avg_train_error = train_step(&mut ai_player.ai.nn, &train_data, learning_rate);
-                let avg_test_error = calc_avg_test_error(&ai_player.ai.nn, &test_data);
+                let avg_train_error = train_step(ai_player.get_ai_mut().get_nn_mut(), &train_data, learning_rate);
+                let avg_test_error = calc_avg_test_error(&ai_player.get_ai().get_nn(), &test_data);
                 let is_to_remove = avg_train_error.is_nan() || avg_test_error.is_nan();
                 let n = index_to_number(i);
-                let name = &ai_player.ai.name;
-                (format!("NN#{n}\tavg train error = {avg_train_error}\tavg test error = {avg_test_error}\t{name}"), is_to_remove)
+                let name = ai_player.get_ai().get_name();
+                (is_to_remove, format!("NN#{n}\tavg train error = {avg_train_error}\tavg test error = {avg_test_error}\t{name}"))
             })
             .unzip();
         let mut msg = format!("Epoch {epoch_number}/{TRAINING_EPOCHS}:\n", epoch_number=index_to_number(epoch));
@@ -294,10 +318,10 @@ fn train_nns(ai_players: &mut Vec<AI_Player>, train_and_test_data: TrainAndTestD
         if config.remove_ai_if_it_gives_nan {
             assert_eq!(ai_players.len(), is_to_remove_vec.len());
             *ai_players = ai_players
-                .iter()
+                .into_iter()
                 .zip(is_to_remove_vec)
                 .filter(|(_ai_player, is_to_remove)| !is_to_remove)
-                .map(|(ai_player, _)| ai_player.clone())
+                .map(|(ai_player, _)| ai_player.clone()) // TODO(optimization): remake without clone.
                 .collect();
         }
     }
@@ -438,7 +462,7 @@ fn position_vec_from_string(position_str: &str) -> Vector {
 }
 
 
-#[allow(dead_code)]
+#[expect(dead_code)]
 fn generate_and_save_random_positions(fens_number: usize, moves_limit: usize) {
     let fens = generate_random_positions(fens_number, moves_limit);
     save_random_positions(fens);
@@ -446,20 +470,24 @@ fn generate_and_save_random_positions(fens_number: usize, moves_limit: usize) {
 
 fn generate_random_positions(fens_number: usize, moves_limit: usize) -> Vec<String> {
     let mut fens = Vec::with_capacity(fens_number);
-    let mut rng = thread_rng();
     while fens.len() < fens_number {
         let mut game = Game::new();
         for _move_number in 0..moves_limit {
-            let possible_moves = MoveGen::new_legal(&game.current_position());
-            let possible_moves = possible_moves.into_iter().collect::<Vec<_>>();
-            let random_move_index = rng.gen_range(0..possible_moves.len());
-            let random_move = possible_moves[random_move_index];
+            let random_move = select_random_move(&game.current_position());
             game.make_move(random_move);
             if game.result().is_some() || game.can_declare_draw() { break }
             fens.push(game.current_position().to_string());
         }
     }
     fens
+}
+
+pub fn select_random_move(board: &Board) -> ChessMove {
+    let moves = MoveGen::new_legal(board);
+    let moves = moves.into_iter().collect::<Vec<_>>();
+    let random_move_index = thread_rng().gen_range(0..moves.len());
+    let random_move = moves[random_move_index];
+    random_move
 }
 
 fn save_random_positions(fens: Vec<String>) {
@@ -487,43 +515,6 @@ fn load_all_data_str(filenames: &[&str]) -> Vec<String> {
 }
 
 
-
-// mod pieces_values {
-//     use chess::{Color, Piece};
-
-//     use crate::float_type::float;
-
-//     pub const NONE: float = 0.;
-
-//     // pub const PAWN  : float = 1.;
-//     // pub const KNIGHT: float = 2.7;
-//     // pub const BISHOP: float = 3.;
-//     // pub const ROOK  : float = 5.;
-//     // pub const QUEEN : float = 7.;
-//     // pub const KING  : float = 15.;
-//     pub const PAWN  : float = 0.1;
-//     pub const KNIGHT: float = 0.2;
-//     pub const BISHOP: float = 0.4;
-//     pub const ROOK  : float = 0.6;
-//     pub const QUEEN : float = 0.8;
-//     pub const KING  : float = 1.;
-
-//     pub fn get(option_piece_and_color: Option<(Piece, Color)>) -> float {
-//         let Some((piece, color)) = option_piece_and_color else { return NONE };
-//         let value = match piece {
-//             Piece::Pawn   => PAWN,
-//             Piece::Knight => KNIGHT,
-//             Piece::Bishop => BISHOP,
-//             Piece::Rook   => ROOK,
-//             Piece::Queen  => QUEEN,
-//             Piece::King   => KING,
-//         };
-//         match color {
-//             Color::White => value,
-//             Color::Black => -value,
-//         }
-//     }
-// }
 
 mod chess_pieces {
     use chess::{Color, Piece};
@@ -612,8 +603,7 @@ fn get_pieces_by_color(board: Board) -> PiecesByColor<Vec<Piece>> {
     let board_builder: BoardBuilder = board.into();
     let mut white_pieces = Vec::new();
     let mut black_pieces = Vec::new();
-    for i in 0..64 {
-        let square = unsafe { Square::new(i) }; // SAFETY: this is safe bc `i` is from 0 to 64 (not including)
+    for square in ALL_SQUARES {
         let option_piece_and_color = board_builder[square];
         match option_piece_and_color {
             Some((piece, Color::White)) => { white_pieces.push(piece) }
@@ -753,7 +743,7 @@ fn board_to_human_viewable(board: Board, config: BoardToHumanViewableConfig) -> 
         }
         for x in 0..8 {
             let index = y*8 + x;
-            let square = unsafe { Square::new(index) }; // SAFETY: this is safe bc `index` is from 0 to 64 (not including)
+            let square = ALL_SQUARES[index];
             let option_piece_and_color = board_builder[square];
             if x == 0 {
                 res += RANKS[y as usize];
@@ -787,68 +777,83 @@ fn board_to_human_viewable(board: Board, config: BoardToHumanViewableConfig) -> 
 
 
 
-fn board_to_vector_for_nn(board: Board) -> Vector {
-    fn board_to_vector(board: Board) -> Vector {
-        let mut vector: Vector = Vector::zeros(NN_INPUT_SIZE);
-        let board_builder: BoardBuilder = board.into();
-        for index_in_64 in 0..64 {
-            let square: Square = unsafe { Square::new(index_in_64) }; // SAFETY: this is safe bc `index_in_64` is from 0 to 64 (not including)
-            let option_piece_and_color: Option<(Piece, Color)> = board_builder[square];
-            if let Some(piece_and_color) = option_piece_and_color {
-                let index_of_64 = match piece_and_color {
-                    (Piece::Pawn  , Color::White) => 0,
-                    (Piece::Knight, Color::White) => 1,
-                    (Piece::Bishop, Color::White) => 2,
-                    (Piece::Rook  , Color::White) => 3,
-                    (Piece::Queen , Color::White) => 4,
-                    (Piece::King  , Color::White) => 5,
-                    (Piece::Pawn  , Color::Black) => 6,
-                    (Piece::Knight, Color::Black) => 7,
-                    (Piece::Bishop, Color::Black) => 8,
-                    (Piece::Rook  , Color::Black) => 9,
-                    (Piece::Queen , Color::Black) => 10,
-                    (Piece::King  , Color::Black) => 11,
-                };
-                vector[64*index_of_64 + (index_in_64 as usize)] = 1.;
+pub fn board_to_vector_for_nn(board: Board) -> Vector {
+    let mut input_for_nn: Vector = Vector::zeros(NN_INPUT_SIZE);
+    let board_builder: BoardBuilder = board.into();
+    for (index_in_64, square) in ALL_SQUARES.into_iter().enumerate() {
+        let option_piece_and_color: Option<(Piece, Color)> = board_builder[square];
+        if let Some((piece, color)) = option_piece_and_color {
+            // bow = white or black
+            let index_of_64_wob = match (piece, color) {
+                (Piece::Pawn  , Color::White) => 0,
+                (Piece::Knight, Color::White) => 1,
+                (Piece::Bishop, Color::White) => 2,
+                (Piece::Rook  , Color::White) => 3,
+                (Piece::Queen , Color::White) => 4,
+                (Piece::King  , Color::White) => 5,
+                (Piece::Pawn  , Color::Black) => 6,
+                (Piece::Knight, Color::Black) => 7,
+                (Piece::Bishop, Color::Black) => 8,
+                (Piece::Rook  , Color::Black) => 9,
+                (Piece::Queen , Color::Black) => 10,
+                (Piece::King  , Color::Black) => 11,
+            };
+            // set white or black channel:
+            input_for_nn[64*index_of_64_wob + index_in_64] = 1.;
+            // TODO(refactor): extract this `1.` into const?
+
+            fn get_index_of_64_wab(piece: Piece) -> usize {
+                match piece {
+                    Piece::Pawn   => 12,
+                    Piece::Knight => 13,
+                    Piece::Bishop => 14,
+                    Piece::Rook   => 15,
+                    Piece::Queen  => 16,
+                    Piece::King   => 17,
+                }
+            }
+
+            fn value_from_color(color: Color) -> float {
+                match color {
+                    Color::White => 1.,
+                    Color::Black => -1.,
+                }
+            }
+
+            match NUMBER_OF_DEPTH_CHANNELS {
+                NumberOfDepthChannels::Two => {}
+                NumberOfDepthChannels::Three { use_opposite_signs } => {
+                    // wab = white and black
+                    let index_of_64_wab = get_index_of_64_wab(piece);
+                    let value = if !use_opposite_signs { 1. } else { value_from_color(color) };
+                    // set white and black channel:
+                    input_for_nn[64*index_of_64_wab + index_in_64] = value;
+                }
+                NumberOfDepthChannels::Four => {
+                    // wab = white and black
+                    let index_of_64_wab = get_index_of_64_wab(piece);
+                    // set white and black channel:
+                    input_for_nn[64*index_of_64_wab + index_in_64] = 1.;
+
+                    // wanb = white and negative black
+                    let index_of_64_wanb = match piece {
+                        Piece::Pawn   => 18,
+                        Piece::Knight => 19,
+                        Piece::Bishop => 20,
+                        Piece::Rook   => 21,
+                        Piece::Queen  => 22,
+                        Piece::King   => 23,
+                    };
+                    let value = value_from_color(color);
+                    // set white and negative black channel:
+                    input_for_nn[64*index_of_64_wanb + index_in_64] = value;
+                    todo!()
+                }
             }
         }
-        vector
     }
-    let input_for_nn = board_to_vector(board);
-    // if board.side_to_move() == Color::Black {
-    //     // TODO?: check what is the correct way
-    //     // input_for_nn = Vector::from_iterator(NN_INPUT_SIZE, input_for_nn.into_iter().rev().map(|&x| x));
-    //     // input_for_nn = -input_for_nn;
-    //     // after 100 epochs:
-    //     // 0,0 ->
-    //     // 0,1 ->
-    //     // 1,0 ->
-    //     // 1,1 ->
-    // }
-    // println!("{input_for_nn:?}");
     input_for_nn
 }
-
-fn analyze(board: Board, nn: &ChessNeuralNetwork) -> float {
-    let input_for_nn = board_to_vector_for_nn(board);
-    // println!("input_for_nn = {:?}", array_board);
-    nn.process_input(input_for_nn)
-}
-
-
-// /// Return `pieces_sum_white - pieces_sum_black`
-// fn board_to_pieces_sum(board: Board) -> float {
-//     let board_builder: BoardBuilder = board.into();
-//     let mut pieces_sum = 0.;
-//     for i in 0..64 {
-//         let square = unsafe { Square::new(i) }; // SAFETY: this is safe bc `i` is from 0 to 64 (not including)
-//         let option_piece_and_color = board_builder[square];
-//         pieces_sum += pieces_values::get(option_piece_and_color);
-//     }
-//     pieces_sum
-// }
-
-
 
 
 #[derive(Debug, Copy, Clone, Eq, Hash, PartialEq)]
@@ -880,66 +885,25 @@ fn actions_to_string(actions: Vec<Action>) -> String {
 
 
 
-fn string_to_chess_move(line: &str) -> Option<ChessMove> {
-    if !(4..=5).contains(&line.len()) { return None }
-    let chars: Vec<char> = line.chars().collect();
-    let (from_file, from_rank, to_file, to_rank, promote_to) = (chars[0], chars[1], chars[2], chars[3], chars.get(4));
-    let from_file = File::from_str(&from_file.to_string()).ok()?;
-    let from_rank = Rank::from_str(&from_rank.to_string()).ok()?;
-    let to_file = File::from_str(&to_file.to_string()).ok()?;
-    let to_rank = Rank::from_str(&to_rank.to_string()).ok()?;
-    if let Some(&promote_to) = promote_to && !"qrbn".contains(promote_to) { return None }
-    let promote_to: Option<Piece> = promote_to.map(|ch| match ch {
-        'q' => { Piece::Queen }
-        'r' => { Piece::Rook }
-        'b' => { Piece::Bishop }
-        'n' => { Piece::Knight }
-        _ => unreachable!()
-    });
-    Some(ChessMove::new(
-        Square::make_square(from_rank, from_file),
-        Square::make_square(to_rank, to_file),
-        promote_to,
-    ))
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum MoveByHuman {
-    Move(ChessMove),
-    Surrender,
-    Quit,
-}
-fn get_move_from_human(game: &Game) -> MoveByHuman {
-    loop {
-        const CMD_QUIT: &str = "q";
-        const CMD_SURRENDER: &str = "s";
-        let line = prompt("Your move: ");
-        match line.as_str() {
-            CMD_QUIT => { return MoveByHuman::Quit }
-            CMD_SURRENDER => { return MoveByHuman::Surrender }
-            _ => {}
-        }
-        let move_ = string_to_chess_move(&line);
-        if let Some(move_) = move_ && game.current_position().legal(move_) {
-            return MoveByHuman::Move(move_);
-        }
-        println!("Illegal move.");
-    }
-}
-
-
 struct PlayGameConfig {
     pub get_game_moves: bool,
     pub show_logs: bool,
     pub wait_for_enter_after_every_move: bool,
-    pub human_color: Option<Color>,
 }
 impl PlayGameConfig {
     fn none() -> Self {
-        Self { get_game_moves: false, show_logs: false, wait_for_enter_after_every_move: false, human_color: None }
+        Self {
+            get_game_moves: false,
+            show_logs: false,
+            wait_for_enter_after_every_move: false,
+        }
     }
-    fn all(human_color: Color) -> Self {
-        Self { get_game_moves: true, show_logs: true, wait_for_enter_after_every_move: true, human_color: Some(human_color) }
+    fn all() -> Self {
+        Self {
+            get_game_moves: true,
+            show_logs: true,
+            wait_for_enter_after_every_move: true,
+        }
     }
 }
 
@@ -949,8 +913,8 @@ enum PlayGameError {
 }
 
 fn play_game(
-    nn_white: &ChessNeuralNetwork,
-    nn_black: &ChessNeuralNetwork,
+    player_white: BoxDynPlayer,
+    player_black: BoxDynPlayer,
     config: PlayGameConfig,
 ) -> (Result<Winner, PlayGameError>, Option<String>) {
     let maybe_print_position = |board: Board| {
@@ -964,7 +928,6 @@ fn play_game(
     };
 
     let mut game = Game::new();
-    let mut rng = thread_rng();
 
     maybe_print_position(game.current_position());
 
@@ -977,96 +940,25 @@ fn play_game(
 
         let side_to_move: Color = game.current_position().side_to_move();
 
-        // if vs human
-        if let Some(human_color) = config.human_color && human_color == side_to_move {
-            let move_by_human = get_move_from_human(&game);
-            let _: ! = match move_by_human {
-                MoveByHuman::Quit => {
-                    return (Err(PlayGameError::Quit), None)
-                }
-                MoveByHuman::Surrender => {
-                    game.resign(human_color);
-                    continue
-                }
-                MoveByHuman::Move(move_) => {
-                    game.make_move(move_);
-                    continue // go to AI's move
-                }
-            };
-            // This place is totally unreachable because `!`(never-type) is used above.
-            // Or use `::std::convert::Infallible` if you want to aviod using feature / do it on stable
-        }
-
-        let nn_to_make_move = match side_to_move {
-            Color::White => nn_white,
-            Color::Black => nn_black,
+        let player_to_make_move = match side_to_move {
+            Color::White => &player_white,
+            Color::Black => &player_black,
         };
 
-        #[derive(Debug, Copy, Clone)]
-        struct MoveWithMark { move_: ChessMove, score: float, weight: float }
-        impl MoveWithMark {
-            fn get_weighted_score(&self) -> float { self.score * self.weight }
-        }
-
-        let mut omwm_best: Option<MoveWithMark> = None;
-        let mut mwms: Vec<MoveWithMark> = vec![]; // used only if `config.show_logs`
-        let legal_moves = MoveGen::new_legal(&game.current_position());
-        for move_ in legal_moves {
-            let board_possible: Board = game.current_position().make_move_new(move_);
-
-            let score: float = analyze(board_possible, nn_to_make_move);
-
-            let weight = if let Some((w_min, w_max)) = NN_RESULT_RANDOM_CHOICE { rng.gen_range(w_min..w_max) } else { 1. };
-
-            let mwm_possible = MoveWithMark { move_, score, weight };
-            if config.show_logs {
-                mwms.push(mwm_possible);
-            }
-
-            omwm_best = match omwm_best {
-                None => { // executes at first cycle of the loop, when `omwm_best` isn't set yet
-                    Some(mwm_possible)
-                }
-                Some(/* mwm_best @ */ MoveWithMark { score, .. }) if score.is_nan() => { // executes if best is NaN
-                    Some(mwm_possible)
-                }
-                Some(mwm_best) => {
-                    // assert!(mwm_possible.score.is_finite()); // allowed to be ±infinite?
-                    let best_is = if side_to_move == Color::White { Ordering::Greater } else { Ordering::Less };
-                    match mwm_possible.get_weighted_score().partial_cmp(&mwm_best.get_weighted_score()) {
-                        Some(ordering) if ordering == best_is => { // executes if new is better
-                            Some(mwm_possible)
-                        }
-                        _ => omwm_best, // don't change best
-                    }
-                }
-            };
-        }
-
-        if config.show_logs {
-            mwms.sort_by(|mwm1, mwm2| mwm1.get_weighted_score().total_cmp(&mwm2.get_weighted_score()));
-            for mwm in mwms {
-                let MoveWithMark { move_, score, weight } = mwm;
-                let weighted_score = mwm.get_weighted_score();
-                // TODO: better formatting
-                println!("{move_:<5} -> score = {score:<20} weight = {weight:<20} -> weighted_score = {weighted_score}");
-            }
-        }
-
-        match omwm_best {
-            Some(mwm_best) => {
-                if config.show_logs {
-                    println!("making move: {}", mwm_best.move_);
-                }
-                game.make_move(mwm_best.move_);
-            }
-            None => {
-                if config.show_logs {
-                    println!("game have ended, because no move can be made, i suppose");
-                }
+        let maybe_best_move = player_to_make_move.select_move(game.current_position());
+        let best_move = match maybe_best_move {
+            MaybeChessMove::Move(move_) => move_,
+            MaybeChessMove::Surrender => {
+                let current_player_color = game.side_to_move();
+                let human_color = current_player_color;
+                game.resign(human_color);
                 break
             }
-        }
+            MaybeChessMove::Quit => {
+                return (Err(PlayGameError::Quit), None);
+            }
+        };
+        game.make_move(best_move);
 
         if game.can_declare_draw() {
             game.declare_draw();
@@ -1093,60 +985,64 @@ fn play_game(
 
 
 
-fn elo_rating_delta(x: float) -> float {
-    100. / ( 1. + (10. as float).powf(x / 400.) )
-}
-
-const MOVES_NOT_PROVIDED: &str = "moves not provided";
+const MOVES_WASNT_PROVIDED: &str = "moves wasnt provided";
 
 struct PlayTournametConfig { sort: bool, print_games_results: bool, print_games: bool }
 /// Plays tournament and sorts AIs.
-fn play_tournament(ai_players: &mut Vec<AI_Player>, config: PlayTournametConfig) {
+fn play_tournament(ai_players: &mut Vec<AIwithRating>, config: PlayTournametConfig) {
     let ais_number = ai_players.len();
 
-    let mut tournament_statistics: HashMap<Winner, u32> = HashMap::new();
+    let ij_from_i_j = |i: usize, j: usize| -> usize {
+        i * ais_number + j
+    };
+    let ij_to_i_j = |ij: usize| -> (usize, usize) {
+        (ij / ais_number, ij % ais_number)
+    };
 
     let nn_game_results: Vec<Option<Winner>> = (0..ais_number.pow(2)) // ij
         .collect::<Vec<usize>>()
         .into_par_iter()
-        .map(|ij| (ij / ais_number, ij % ais_number))
-        .map(|(i, j)| if i != j { Some((ai_players[i].ai.nn.clone(), ai_players[j].ai.nn.clone())) } else { None })
+        .map(ij_to_i_j)
+        .map(|(i, j)| {
+            if i == j { return None }
+            Some((
+                Box::new(ai_players[i].get_ai() as &(dyn Player + Send + Sync)),
+                Box::new(ai_players[j].get_ai() as &(dyn Player + Send + Sync)),
+            ))
+        })
         .map(|option_ai_ij| {
             option_ai_ij.map(|(ai_i, ai_j)| {
-                let game_res = play_game(&ai_i, &ai_j, PlayGameConfig::none());
+                let game_res = play_game(ai_i, ai_j, PlayGameConfig::none());
                 game_res.0.unwrap()
             })
         })
         .collect();
 
+    let mut tournament_statistics: HashMap<Winner, u32> = HashMap::new();
+
     for i in 0..ais_number {
         for j in 0..ais_number {
             if i == j { continue }
             // i->w->white, j->b->black
-            //let mut player_w: Player = players[i].clone();
-            //let mut player_b: Player = players[j].clone();
 
-            let winner: Winner = nn_game_results[i*ais_number+j].unwrap();
+            let winner: Winner = nn_game_results[ij_from_i_j(i, j)].unwrap();
             if config.print_games_results {
                 let winner_char: char = match winner {
                     Winner::White => 'W',
                     Winner::Black => 'B',
-                    Winner::Draw => '.',
+                    Winner::Draw  => '.',
                 };
                 print!("{winner_char}");
             }
 
-            let counter = tournament_statistics.entry(winner).or_insert(0);
-            *counter += 1;
+            *tournament_statistics.entry(winner).or_insert(0) += 1;
 
-            (ai_players[i].rating, ai_players[j].rating) = updated_ratings(ai_players[i].rating, ai_players[j].rating, winner);
+            let [player_i, player_j]: [&mut AIwithRating; 2] = ai_players.get_many_mut([i, j]).unwrap();
+            update_ratings(player_i.get_rating_mut(), player_j.get_rating_mut(), winner);
             // if SHOW_TRAINING_LOGS {
             //     println!("new ratings: i={}, j={}", player_i.rating, player_j.rating);
             //     println!();
             // }
-
-            // players[i].rating = player_w.rating;
-            // players[j].rating = player_b.rating;
         }
         if config.print_games_results {
             print!(" ");
@@ -1157,19 +1053,19 @@ fn play_tournament(ai_players: &mut Vec<AI_Player>, config: PlayTournametConfig)
     }
 
     if config.sort {
-        ai_players.sort_by(|ai1, ai2| ai2.rating.partial_cmp(&ai1.rating).unwrap());
+        ai_players.sort_by(|ai1, ai2| ai2.get_rating().partial_cmp(&ai1.get_rating()).unwrap());
     }
 
     if config.print_games {
         println!("\nstats: {:?}", tournament_statistics);
 
-        let ratings: Vec<float> = ai_players
+        let ratings: Vec<Rating> = ai_players
             .iter()
-            .map(|p| p.rating)
+            .map(|p| p.get_rating())
             .collect();
         let ratings_str = ratings
             .iter()
-            .map(|r| format!("{r:.2}"))
+            .map(|r| format!("{r:.2}", r=r.get()))
             .reduce(|acc, el| acc + ", " + &el)
             .unwrap_or_default();
         println!("final ratings (sorted): [{ratings_str}]");
@@ -1178,8 +1074,8 @@ fn play_tournament(ai_players: &mut Vec<AI_Player>, config: PlayTournametConfig)
         assert!(config.sort);
         {
             let (winner, game_moves) = play_game(
-                &ai_players[0].ai.nn,
-                &ai_players[0].ai.nn,
+                Box::new(ai_players[0].get_ai()),
+                Box::new(ai_players[0].get_ai()),
                 PlayGameConfig {
                     get_game_moves: true,
                     ..PlayGameConfig::none()
@@ -1187,15 +1083,15 @@ fn play_tournament(ai_players: &mut Vec<AI_Player>, config: PlayTournametConfig)
             );
             println!(
                 "BEST vs SELF: winner={winner:?}, moves: ' {moves} '",
-                moves = game_moves.unwrap_or(MOVES_NOT_PROVIDED.to_string()),
+                moves = game_moves.unwrap_or(MOVES_WASNT_PROVIDED.to_string()),
             );
             println!();
         }
 
         {
             let (winner, game_moves) = play_game(
-                &ai_players[0].ai.nn,
-                &ai_players[1].ai.nn,
+                Box::new(ai_players[0].get_ai()),
+                Box::new(ai_players[1].get_ai()),
                 PlayGameConfig {
                     get_game_moves: true,
                     ..PlayGameConfig::none()
@@ -1203,15 +1099,15 @@ fn play_tournament(ai_players: &mut Vec<AI_Player>, config: PlayTournametConfig)
             );
             println!(
                 "BEST vs BEST2: winner={winner:?}, moves: ' {moves} '",
-                moves = game_moves.unwrap_or(MOVES_NOT_PROVIDED.to_string()),
+                moves = game_moves.unwrap_or(MOVES_WASNT_PROVIDED.to_string()),
             );
             println!();
         }
 
         {
             let (winner, game_moves) = play_game(
-                &ai_players[0].ai.nn,
-                &ai_players.last().unwrap().ai.nn,
+                Box::new(ai_players[0].get_ai()),
+                Box::new(ai_players.last().unwrap().get_ai()),
                 PlayGameConfig {
                     get_game_moves: true,
                     ..PlayGameConfig::none()
@@ -1219,15 +1115,15 @@ fn play_tournament(ai_players: &mut Vec<AI_Player>, config: PlayTournametConfig)
             );
             println!(
                 "BEST vs WORST: winner={winner:?}, moves: ' {moves} '",
-                moves = game_moves.unwrap_or(MOVES_NOT_PROVIDED.to_string()),
+                moves = game_moves.unwrap_or(MOVES_WASNT_PROVIDED.to_string()),
             );
             println!();
         }
 
         {
             let (winner, game_moves) = play_game(
-                &ai_players.last().unwrap().ai.nn,
-                &ai_players.last().unwrap().ai.nn,
+                Box::new(ai_players.last().unwrap().get_ai()),
+                Box::new(ai_players.last().unwrap().get_ai()),
                 PlayGameConfig {
                     get_game_moves: true,
                     ..PlayGameConfig::none()
@@ -1235,47 +1131,11 @@ fn play_tournament(ai_players: &mut Vec<AI_Player>, config: PlayTournametConfig)
             );
             println!(
                 "WORST vs SELF: winner={winner:?}, moves: ' {moves} '",
-                moves = game_moves.unwrap_or(MOVES_NOT_PROVIDED.to_string()),
+                moves = game_moves.unwrap_or(MOVES_WASNT_PROVIDED.to_string()),
             );
             // println!();
         }
     }
-}
-
-
-fn updated_ratings(mut white_rating: float, mut black_rating: float, winner: Winner) -> (float, float) {
-    // const WINNER_SCALE: float = 1.;
-    const LOSE_SCALE: float = 1.;
-    const DRAW_SCALE_STRONGER: float = 5.;
-    const DRAW_SCALE_WEAKER  : float = 5.;
-    let delta_rating_w = elo_rating_delta(white_rating - black_rating);
-    let delta_rating_b = elo_rating_delta(black_rating - white_rating);
-    match winner {
-        Winner::White => {
-            white_rating += delta_rating_w;
-            black_rating -= delta_rating_w / LOSE_SCALE;
-        }
-        Winner::Black => {
-            white_rating -= delta_rating_b / LOSE_SCALE;
-            black_rating += delta_rating_b;
-        }
-        Winner::Draw => {
-            // let delta_rating_min: float = delta_rating_w.min(delta_rating_b);
-            let delta_rating_max: float = delta_rating_w.max(delta_rating_b);
-            match white_rating.partial_cmp(&black_rating).unwrap() {
-                Ordering::Greater => {
-                    white_rating -= delta_rating_max / DRAW_SCALE_STRONGER;
-                    black_rating += delta_rating_max / DRAW_SCALE_WEAKER;
-                }
-                Ordering::Less => {
-                    white_rating += delta_rating_max / DRAW_SCALE_WEAKER;
-                    black_rating -= delta_rating_max / DRAW_SCALE_STRONGER;
-                }
-                _ => {}
-            }
-        }
-    }
-    (white_rating, black_rating)
 }
 
 
@@ -1310,6 +1170,7 @@ mod benchmarks {
             fn pade_approx(bencher: &mut Bencher) {
                 // use crate::math_functions_pade_approx::sigmoid;
                 let x = thread_rng().gen_range(X_MIN..X_MAX);
+                #[expect(unused_variables)]
                 bencher.iter(|| {
                     let x = black_box(x);
                     // sigmoid(x)
@@ -1342,9 +1203,70 @@ fn index_to_number(i: usize) -> usize {
 }
 fn number_to_index(n: usize) -> usize {
     assert!(n > 0);
+    // bc if index is 0 then it's number 1, 1=>2, 2=>3, and so on
     n - 1
 }
 fn number_to_index_checked(n: usize) -> Option<usize> {
-    if n > 0 { Some(n - 1) } else { None }
+    if n > 0 { Some(number_to_index(n)) } else { None }
+}
+
+
+/// Enum of variants of Number of Depth Channels to use for NN's input.
+#[allow(dead_code)] // TODO(lter, when fixed): change `allow` to `expect`.
+#[repr(usize)]
+enum NumberOfDepthChannels {
+    /// Channels: White, Black.
+    /// => `NN_INPUT_SIZE` = 768
+    Two = 2,
+    /// Channels: White, Black, White and (maybe negative) Black.
+    /// => `NN_INPUT_SIZE` = 1152
+    Three { use_opposite_signs: bool } = 3,
+    /// Channels: White, Black, White and Black, White and Negative Black.
+    /// => `NN_INPUT_SIZE` = 1536
+    Four = 4,
+}
+impl NumberOfDepthChannels {
+    /// Returns discriminant - number used to represent enum's variant number.
+    ///
+    /// src: https://doc.rust-lang.org/reference/items/enumerations.html#pointer-casting
+    const fn discriminant(&self) -> usize {
+        unsafe { *(self as *const Self as *const usize) }
+    }
+}
+
+#[cfg(test)]
+mod number_of_depth_channels {
+    /// These tests are critical bc if they fail it probably will lead to big and scary UB.
+    mod discriminant {
+        use crate::NumberOfDepthChannels as NODC;
+        #[test]
+        fn two() {
+            assert_eq!(
+                2,
+                NODC::Two.discriminant()
+            );
+        }
+        #[test]
+        fn three_false() {
+            assert_eq!(
+                3,
+                NODC::Three { use_opposite_signs: false }.discriminant()
+            );
+        }
+        #[test]
+        fn three_true() {
+            assert_eq!(
+                3,
+                NODC::Three { use_opposite_signs: true }.discriminant()
+            );
+        }
+        #[test]
+        fn four() {
+            assert_eq!(
+                4,
+                NODC::Four.discriminant()
+            );
+        }
+    }
 }
 

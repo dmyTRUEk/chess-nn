@@ -8,14 +8,12 @@ use crate::float_type::float;
 
 use super::vector_type::Vector;
 
-use self::{
-    activation_functions::*,
-    fully_connected::FullyConnected,
-};
+use {activation_functions::*, fully_connected::FullyConnected};
 
 
-#[allow(dead_code, non_camel_case_types)]
+#[allow(non_camel_case_types)]
 #[derive(Debug, Clone, Copy)]
+#[expect(dead_code)]
 pub enum LayerSpecs {
     /// Contains `output_size`.
     FullyConnected(usize),
@@ -28,11 +26,11 @@ pub enum LayerSpecs {
     AF_Relu,
     AF_Sigmoid,
     AF_Signum,
-    AF_SignLnAbs,
-    AF_SignSqrtAbs,
     AF_Silu,
     AF_SoftMax,
     AF_SoftPlus,
+    AF_SymLn,
+    AF_SymSqrt,
     AF_Tanh,
 }
 
@@ -53,11 +51,11 @@ impl LayerSpecs {
             Self::AF_Relu => Box::new(AF_Relu::new(*input_size)),
             Self::AF_Sigmoid => Box::new(AF_Sigmoid::new(*input_size)),
             Self::AF_Signum => Box::new(AF_Signum::new(*input_size)),
-            Self::AF_SignLnAbs => Box::new(AF_SignLnAbs::new(*input_size)),
-            Self::AF_SignSqrtAbs => Box::new(AF_SignSqrtAbs::new(*input_size)),
             Self::AF_Silu => Box::new(AF_Silu::new(*input_size)),
             Self::AF_SoftMax => Box::new(AF_SoftMax::new(*input_size)),
             Self::AF_SoftPlus => Box::new(AF_SoftPlus::new(*input_size)),
+            Self::AF_SymLn => Box::new(AF_SymLn::new(*input_size)),
+            Self::AF_SymSqrt => Box::new(AF_SymSqrt::new(*input_size)),
             Self::AF_Tanh => Box::new(AF_Tanh::new(*input_size)),
         }
     }
@@ -74,11 +72,11 @@ impl LayerSpecs {
             | Self::AF_Relu
             | Self::AF_Sigmoid
             | Self::AF_Signum
-            | Self::AF_SignLnAbs
-            | Self::AF_SignSqrtAbs
             | Self::AF_Silu
             | Self::AF_SoftMax
             | Self::AF_SoftPlus
+            | Self::AF_SymLn
+            | Self::AF_SymSqrt
             | Self::AF_Tanh
             => true
         }
