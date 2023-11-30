@@ -137,7 +137,7 @@ const NN_RESULT_RANDOM_CHOICE: Option<(float, float)> = Some((0.9, 1.1));
 const PLAY_GAME_MOVES_LIMIT: usize = 500;
 
 const PLAY_WITH_NNS_AFTER_TRAINING: bool = true;
-const CHESS_NN_THINK_DEPTH_VS_HUMAN: u8 = 3; // TODO: test depth to have reasonable time per move
+const CHESS_NN_THINK_DEPTH_VS_HUMAN: u8 = 3; // 4 if parallel
 
 
 
@@ -178,6 +178,12 @@ fn main() {
     print_and_flush(format!("Splitting data to train and test datasets with `train/test ratio`={TRAIN_TO_TEST_RATIO}... "));
     let train_and_test_data = TrainAndTestData::from(all_data, TRAIN_TO_TEST_RATIO);
     println!("Done.");
+
+    fn set_ais_mode(ai_players: &mut Vec<AIwithRating>, mode: AI_ThinkingDepth) {
+        for ai_player in ai_players.iter_mut() {
+            ai_player.get_ai_mut().set_mode(mode);
+        }
+    }
 
     println!("Starting training Neural Networks...\n");
     set_ais_mode(&mut ai_players, AI_ThinkingDepth::Training);
@@ -235,6 +241,9 @@ fn main() {
         const CMD_QUIT_SHORT: &str = "q";
         const CMD_QUIT_FULL : &str = "quit";
         println!("- quit: `{CMD_QUIT_SHORT}` or `{CMD_QUIT_FULL}`");
+        const CMD_EXPORT_NN_AS_IMAGES_SHORT: &str = "e";
+        const CMD_EXPORT_NN_AS_IMAGES_FULL : &str = "export";
+        println!("- export NN as images: `{CMD_EXPORT_NN_AS_IMAGES_SHORT}` or `{CMD_EXPORT_NN_AS_IMAGES_FULL}`");
         // TODO(feat): make AI #N play vs AI #M
         let line = prompt("So what's it gonna be, huuh? ");
         enum NeuralNetworkToPlayWith {
@@ -247,6 +256,7 @@ fn main() {
         let ai_to_play_with: NNTPW = match line.as_str() {
             CMD_QUIT_SHORT | CMD_QUIT_FULL => { break }
             CMD_LIST_SHORT | CMD_LIST_FULL => { print_ais_ratings(&ai_players, false); continue }
+            CMD_EXPORT_NN_AS_IMAGES_SHORT | CMD_EXPORT_NN_AS_IMAGES_FULL => { process_export_nn_as_images(&ai_players); continue }
             CMD_BEST_STR => NNTPW::Best,
             CMD_WORST_STR => NNTPW::Worst,
             text => if let Ok(n) = text.parse::<usize>() {
@@ -302,13 +312,6 @@ fn main() {
 }
 
 
-fn set_ais_mode(ai_players: &mut Vec<AIwithRating>, mode: AI_ThinkingDepth) {
-    for ai_player in ai_players.iter_mut() {
-        ai_player.get_ai_mut().set_mode(mode);
-    }
-}
-
-
 struct TrainNNsConfig { remove_ai_if_it_gives_nan: bool }
 fn train_nns(ai_players: &mut Vec<AIwithRating>, train_and_test_data: TrainAndTestData, config: TrainNNsConfig) {
     let TrainAndTestData { mut train_data, mut test_data } = train_and_test_data;
@@ -335,12 +338,8 @@ fn train_nns(ai_players: &mut Vec<AIwithRating>, train_and_test_data: TrainAndTe
         println!("{msg}\n");
         if config.remove_ai_if_it_gives_nan {
             assert_eq!(ai_players.len(), is_to_remove_vec.len());
-            *ai_players = ai_players
-                .into_iter()
-                .zip(is_to_remove_vec)
-                .filter(|(_ai_player, is_to_remove)| !is_to_remove)
-                .map(|(ai_player, _)| ai_player.clone()) // TODO(optimization): remake without clone.
-                .collect();
+            let mut is_to_remove_iter = is_to_remove_vec.iter();
+            ai_players.retain(|_| !*is_to_remove_iter.next().unwrap());
         }
     }
 }
@@ -355,6 +354,7 @@ fn train_step(nn: &mut ChessNeuralNetwork, train_data_shuffled: &AnyData, learni
         let output = nn.process_input_for_training(x.clone());
         // println!("output: {output:?}");
         total_error += nn.loss(output, *y);
+        if total_error.is_nan() { return float::NAN }
         let error = nn.loss_prime(output, *y);
         let mut error = Vector::from_element(1, error);
         for layer in nn.layers.iter_mut().rev() {
@@ -372,6 +372,7 @@ fn calc_avg_test_error(nn: &ChessNeuralNetwork, test_data: &AnyData) -> float {
     for (x, y) in test_data.xy.iter() {
         let output = nn.process_input(x.clone());
         total_error += nn.loss(output, *y);
+        if total_error.is_nan() { return float::NAN }
     }
     let avg_error = total_error / (test_data.xy.len() as float);
     avg_error.sqrt()
@@ -509,19 +510,19 @@ pub fn select_random_move(board: &Board) -> ChessMove {
 }
 
 fn save_random_positions(fens: Vec<String>) {
-    use std::io::Write;
-    let mut file = ::std::fs::File::create_new(FILENAME_TO_SAVE_POSITIONS).unwrap();
+    use std::{fs::File, io::Write};
+    let mut file = File::create_new(FILENAME_TO_SAVE_POSITIONS).unwrap();
     for fen in fens {
         writeln!(file, "{fen}").unwrap();
     }
 }
 
 fn load_all_data_str(filenames: &[&str]) -> Vec<String> {
-    use ::std::io::BufRead;
+    use std::{fs::File, io::BufRead};
     let mut all_data_str = filenames
         .into_iter()
         .flat_map(|filename| {
-            let file = ::std::fs::File::open(filename).unwrap();
+            let file = File::open(filename).unwrap();
             ::std::io::BufReader::new(file)
                 .lines()
                 .map(|line| line.unwrap())
@@ -1157,6 +1158,52 @@ fn play_tournament(ai_players: &mut Vec<AIwithRating>, config: PlayTournametConf
 }
 
 
+fn get_datetime() -> String {
+    let now = chrono::Local::now();
+    let year  : u32 = now.format("%Y").to_string().parse().unwrap();
+    let month : u32 = now.format("%m").to_string().parse().unwrap();
+    let day   : u32 = now.format("%d").to_string().parse().unwrap();
+    let hour  : u32 = now.format("%H").to_string().parse().unwrap();
+    let minute: u32 = now.format("%M").to_string().parse().unwrap();
+    let second: u32 = now.format("%S").to_string().parse().unwrap();
+    let ms    : u32 = now.format("%3f").to_string().parse().unwrap();
+    format!("{year:04}_{month:02}_{day:02}__{hour:02}_{minute:02}_{second:02}_{ms:03}")
+}
+
+
+fn process_export_nn_as_images(ai_players: &Vec<AIwithRating>) {
+    use std::{fs, io};
+    use image::{ImageBuffer, RgbImage};
+    let Ok(nn_number) = prompt("Choose NN number to export: ").parse::<usize>() else { println!("Can't parse input as integer."); return };
+    let nn_index = number_to_index(nn_number);
+    let Some(ai_player) = ai_players.get(nn_index) else { println!("Number out of bounds."); return };
+    let ai = ai_player.get_ai();
+    let ai_name = ai.get_name();
+    let nn = ai.get_nn();
+    let export_dir_name = &format!("./exports/{datetime}_{ai_name}", datetime=get_datetime());
+    let io::Result::Ok(()) = fs::create_dir(export_dir_name) else { println!("Can't create directory to export."); return };
+    for (i, layer) in nn.layers.iter().enumerate() {
+        if let Some((weights_matrix, shift_vector)) = layer.get_fc_weights_shifts() {
+            let file_name = format!("{export_dir_name}/layer_{n}.png", n=index_to_number(i));
+            let (rows, cols) = weights_matrix.shape();
+            let (w, h) = (rows, cols);
+            let mut img: RgbImage = ImageBuffer::new(w as u32, h as u32);
+            for x in 0..w {
+                for y in 0..h {
+                    let g = 0;
+                    let value_f = 255. * weights_matrix[(x, y)];
+                    let value_u8: u8 = value_f.abs() as u8;
+                    let (r, b) = if value_f > 0. { (value_u8, 0) } else { (0, value_u8) };
+                    let color = [r, g, b];
+                    img[(x as u32, y as u32)] = image::Rgb(color);
+                }
+            }
+            let image::ImageResult::Ok(()) = img.save(file_name) else { println!("Can't save the image#{n}.", n=index_to_number(i)); continue };
+            // TODO(feat): also export `shift_vector`.
+        }
+    }
+}
+
 
 // BENCHMARKS:
 
@@ -1210,7 +1257,6 @@ mod benchmarks {
         // }
         // TODO: mod tanh {}
     }
-
 }
 
 

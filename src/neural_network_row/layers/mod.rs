@@ -4,7 +4,7 @@ pub mod activation_functions;
 pub mod fully_connected;
 
 
-use crate::float_type::float;
+use crate::{float_type::float, linalg_types::Matrix};
 
 use super::vector_type::Vector;
 
@@ -96,6 +96,9 @@ pub trait Layer: CloneLayer {
 
     /// Update self params and returns layer `input_error` for given [`output_error`].
     fn backward_propagation(&mut self, output_error: Vector, learning_rate: float) -> Vector;
+
+    /// Get Weights and Shifts of FullyConnected layer.
+    fn get_fc_weights_shifts(&self) -> Option<(Matrix, Vector)> { None }
 }
 
 
