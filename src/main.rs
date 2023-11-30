@@ -97,8 +97,8 @@ mod fully_connected_layer_initial_values {
 }
 
 // const NUMBER_OF_DEPTH_CHANNELS: NumberOfDepthChannels = NumberOfDepthChannels::Two;
-const NUMBER_OF_DEPTH_CHANNELS: NumberOfDepthChannels = NumberOfDepthChannels::Three { use_opposite_signs: false };
-// const NUMBER_OF_DEPTH_CHANNELS: NumberOfDepthChannels = NumberOfDepthChannels::Four;
+// const NUMBER_OF_DEPTH_CHANNELS: NumberOfDepthChannels = NumberOfDepthChannels::Three { use_opposite_signs: false };
+const NUMBER_OF_DEPTH_CHANNELS: NumberOfDepthChannels = NumberOfDepthChannels::Four;
 const NUMBER_OF_DIFFERENT_CHESS_PIECES: usize = chess::NUM_PIECES;  // TODO?: assert_eq 6
 const NUMBER_OF_SQUARES_ON_CHESS_BOARD: usize = chess::NUM_SQUARES; // TODO?: assert_eq 64
 const NN_INPUT_SIZE: usize = { // 768 or 1152 or 1536
@@ -865,7 +865,6 @@ pub fn board_to_vector_for_nn(board: Board) -> Vector {
                     let value = value_from_color(color);
                     // set white and negative black channel:
                     input_for_nn[64*index_of_64_wanb + index_in_64] = value;
-                    todo!()
                 }
             }
         }
