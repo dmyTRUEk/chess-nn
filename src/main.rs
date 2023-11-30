@@ -31,7 +31,6 @@ use std::{
 };
 
 use chess::{ALL_SQUARES, Action, Board, BoardBuilder, ChessMove, Color, Game, GameResult, MoveGen, Piece};
-use players::{Player, rating::update_ratings};
 use rand::{Rng, seq::SliceRandom, thread_rng};
 use rayon::prelude::{IndexedParallelIterator, IntoParallelIterator, IntoParallelRefMutIterator, ParallelIterator};
 
@@ -52,9 +51,15 @@ use crate::{
     players::{
         BoxDynPlayer,
         MaybeChessMove,
-        ai::{AIwithRating, ai::AI, generator::AIsGenerator},
+        Player,
+        ai::{
+            AIwithRating,
+            ai::{AI, AI_ThinkingDepth},
+            generator::AIsGenerator
+        },
         human::Human,
         rating::Rating,
+        rating::update_ratings,
     },
     utils_io::{print_and_flush, prompt, wait_for_enter},
 };
@@ -121,17 +126,18 @@ const TRAIN_TO_TEST_RATIO: float = 0.9;
 /// Starting learning rate, gradually decreases with epochs.
 const LEARNING_RATE_0: float = 0.1;
 const LEARNING_RATE_EXP_K: float = 2.;
-const TRAINING_EPOCHS: usize = 100;
+const TRAINING_EPOCHS: usize = 3;
 // TODO(feat): const for use depth analysis when training?
+const CHESS_NN_THINK_DEPTH_FOR_TRAINING: u8 = 1;
 
 const TOURNAMENTS_NUMBER: usize = 3;
 const DEFAULT_RATING: float = 1_000.;
+const CHESS_NN_THINK_DEPTH_IN_TOURNAMENT: u8 = 1;
 const NN_RESULT_RANDOM_CHOICE: Option<(float, float)> = Some((0.9, 1.1));
 const PLAY_GAME_MOVES_LIMIT: usize = 500;
 
 const PLAY_WITH_NNS_AFTER_TRAINING: bool = true;
-// TODO(feat): separately for tournament and play with human (maybe even not const?).
-const CHESS_NN_THINK_DEPTH: u8 = 2;
+const CHESS_NN_THINK_DEPTH_VS_HUMAN: u8 = 3; // TODO: test depth to have reasonable time per move
 
 
 
@@ -141,7 +147,7 @@ fn main() {
 
     print_and_flush("Creating Neural Networks... ");
     let mut ai_players: Vec<AIwithRating> = vec![
-        AIwithRating::new(AI::new(
+        AIwithRating::new(AI::new_for_training(
             "Weighted Sum".to_string(),
             ChessNeuralNetwork::from_layers_specs(vec![
                 LS::FullyConnected(NN_OUTPUT_SIZE),
@@ -173,9 +179,8 @@ fn main() {
     let train_and_test_data = TrainAndTestData::from(all_data, TRAIN_TO_TEST_RATIO);
     println!("Done.");
 
-    // TODO?: z-transformation
-
     println!("Starting training Neural Networks...\n");
+    set_ais_mode(&mut ai_players, AI_ThinkingDepth::Training);
     // TODO?: if NN returns NaN => recreate it few times, else delete it
     train_nns(
         &mut ai_players,
@@ -186,6 +191,7 @@ fn main() {
     );
 
     println!("Playing {TOURNAMENTS_NUMBER} tournaments to set ratings...");
+    set_ais_mode(&mut ai_players, AI_ThinkingDepth::Tournament);
     for i in 0..TOURNAMENTS_NUMBER {
         let n = index_to_number(i);
         print_and_flush(format!("#{n}/{TOURNAMENTS_NUMBER}:\t"));
@@ -198,7 +204,6 @@ fn main() {
             }
         );
     }
-    let ai_players = ai_players;
     fn print_ais_ratings(ai_players: &Vec<AIwithRating>, is_first_time: bool) {
         let maybe_after_n_tournaments_str = if is_first_time { format!(" after {TOURNAMENTS_NUMBER} tournaments") } else { "".to_string() };
         println!();
@@ -214,6 +219,9 @@ fn main() {
 
     if !PLAY_WITH_NNS_AFTER_TRAINING { return }
 
+    set_ais_mode(&mut ai_players, AI_ThinkingDepth::VsHuman);
+    let ai_players = ai_players;
+
     // TODO?: assert AIs is sorted by rating.
 
     loop {
@@ -227,6 +235,7 @@ fn main() {
         const CMD_QUIT_SHORT: &str = "q";
         const CMD_QUIT_FULL : &str = "quit";
         println!("- quit: `{CMD_QUIT_SHORT}` or `{CMD_QUIT_FULL}`");
+        // TODO(feat): make AI #N play vs AI #M
         let line = prompt("So what's it gonna be, huuh? ");
         enum NeuralNetworkToPlayWith {
             Best,
@@ -241,7 +250,7 @@ fn main() {
             CMD_BEST_STR => NNTPW::Best,
             CMD_WORST_STR => NNTPW::Worst,
             text => if let Ok(n) = text.parse::<usize>() {
-                let i = if let Some(i) = number_to_index_checked(n) { i } else { continue };
+                let Some(i) = number_to_index_checked(n) else { continue };
                 NNTPW::Index(i)
             } else {
                 let name = text.to_string();
@@ -269,15 +278,16 @@ fn main() {
             CMD_SIDE_TO_PLAY_BLACK_SHORT | CMD_SIDE_TO_PLAY_BLACK_FULL => Color::Black,
             _ => { continue } // ask everything from start again
         };
-        let config = PlayGameConfig {
-            wait_for_enter_after_every_move: false,
-            ..PlayGameConfig::all()
-        };
         println!("Good luck! In any unclear situation use `s` to surrender or `q` to quit.");
         let (player_white, player_black): (BoxDynPlayer, BoxDynPlayer) = match human_side_to_play {
             Color::White => (Box::new(&Human), ai_to_play_with),
             Color::Black => (ai_to_play_with, Box::new(&Human)),
         };
+        let config = PlayGameConfig {
+            wait_for_enter_after_every_move: false,
+            ..PlayGameConfig::all()
+        };
+        // TODO(enhancement): add "Thinking..." when AI is thinking.
         let (winner, game_moves) = play_game(player_white, player_black, config);
         let Ok(winner) = winner else { continue };
         println!(
@@ -288,6 +298,13 @@ fn main() {
             },
             moves = game_moves.unwrap_or(MOVES_WASNT_PROVIDED.to_string()),
         );
+    }
+}
+
+
+fn set_ais_mode(ai_players: &mut Vec<AIwithRating>, mode: AI_ThinkingDepth) {
+    for ai_player in ai_players.iter_mut() {
+        ai_player.get_ai_mut().set_mode(mode);
     }
 }
 
@@ -930,8 +947,6 @@ fn play_game(
 
     let mut game = Game::new();
 
-    maybe_print_position(game.current_position());
-
     let mut move_number: usize = 0;
     while game.result() == None && move_number < PLAY_GAME_MOVES_LIMIT {
         move_number += 1;
@@ -939,20 +954,24 @@ fn play_game(
         //     println!("move_number = {move_number}");
         // }
 
-        let side_to_move: Color = game.current_position().side_to_move();
+        let board = game.current_position();
+        let side_to_move: Color = board.side_to_move();
+
+        maybe_print_position(board);
 
         let player_to_make_move = match side_to_move {
             Color::White => &player_white,
             Color::Black => &player_black,
         };
 
-        let maybe_best_move = player_to_make_move.select_move(game.current_position());
+        let Some(maybe_best_move) = player_to_make_move.select_move(board) else {
+            println!("{game:?}");
+            panic!()
+        };
         let best_move = match maybe_best_move {
             MaybeChessMove::Move(move_) => move_,
             MaybeChessMove::Surrender => {
-                let current_player_color = game.side_to_move();
-                let human_color = current_player_color;
-                game.resign(human_color);
+                game.resign(side_to_move);
                 break
             }
             MaybeChessMove::Quit => {
@@ -964,8 +983,6 @@ fn play_game(
         if game.can_declare_draw() {
             game.declare_draw();
         }
-
-        maybe_print_position(game.current_position());
     }
 
     maybe_print_position(game.current_position());

@@ -11,7 +11,7 @@ use super::{MaybeChessMove, Player};
 
 pub struct Human;
 
-impl Player for Human {
+impl Human {
     fn select_move(&self, board: Board) -> MaybeChessMove {
         const CMD_QUIT: &str = "q";
         const CMD_SURRENDER: &str = "s";
@@ -28,6 +28,12 @@ impl Player for Human {
             }
             println!("Illegal move.");
         }
+    }
+}
+
+impl Player for Human {
+    fn select_move(&self, board: Board) -> Option<MaybeChessMove> {
+        Some(self.select_move(board))
     }
 }
 

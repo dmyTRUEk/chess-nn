@@ -1,9 +1,11 @@
 //! AI.
 
-use chess::Board;
+use chess::{Board, ChessMove};
 
 use crate::{
-    CHESS_NN_THINK_DEPTH,
+    CHESS_NN_THINK_DEPTH_FOR_TRAINING,
+    CHESS_NN_THINK_DEPTH_IN_TOURNAMENT,
+    CHESS_NN_THINK_DEPTH_VS_HUMAN,
     ChessNeuralNetwork, // from main
     players::MaybeChessMove,
 };
@@ -15,11 +17,16 @@ use super::super::Player;
 pub struct AI {
     name: String,
     nn: ChessNeuralNetwork,
+    thinking_depth: AI_ThinkingDepth,
 }
 
 impl AI {
-    pub const fn new(name: String, nn: ChessNeuralNetwork) -> Self {
-        Self { name, nn }
+    pub const fn new_for_training(name: String, nn: ChessNeuralNetwork) -> Self {
+        Self { name, nn, thinking_depth: AI_ThinkingDepth::Training }
+    }
+    #[expect(dead_code)]
+    pub const fn new(name: String, nn: ChessNeuralNetwork, thinking_depth: AI_ThinkingDepth) -> Self {
+        Self { name, nn, thinking_depth }
     }
     pub fn get_name(&self) -> String {
         self.name.clone()
@@ -30,17 +37,72 @@ impl AI {
     pub fn get_nn_mut(&mut self) -> &mut ChessNeuralNetwork {
         &mut self.nn
     }
+    pub fn set_mode(&mut self, thinking_depth: AI_ThinkingDepth) {
+        self.thinking_depth = thinking_depth;
+    }
+    #[expect(dead_code)]
+    pub fn set_training_mode(&mut self) {
+        self.set_mode(AI_ThinkingDepth::Training);
+    }
+    #[expect(dead_code)]
+    pub fn set_tournament_mode(&mut self) {
+        self.set_mode(AI_ThinkingDepth::Tournament);
+    }
+    #[expect(dead_code)]
+    pub fn set_vs_human_mode(&mut self) {
+        self.set_mode(AI_ThinkingDepth::VsHuman);
+    }
 }
 
 impl Player for AI {
-    fn select_move(&self, board: Board) -> MaybeChessMove {
-        MaybeChessMove::Move(
-            move_score_weight::choose_best_move(
-                board,
-                self.get_nn(),
-                CHESS_NN_THINK_DEPTH,
-            ).unwrap()
-        )
+    fn select_move(&self, board: Board) -> Option<MaybeChessMove> {
+        let best_move: ChessMove = move_score_weight::choose_best_move(
+            board,
+            self.get_nn(),
+            self.thinking_depth.get().get(),
+        )?;
+        Some(MaybeChessMove::Move(best_move))
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+#[allow(non_camel_case_types)] // TODO(later, when fixed): use `expect`.
+pub enum AI_ThinkingDepth {
+    // Default,
+    Training,
+    Tournament,
+    VsHuman,
+    #[expect(dead_code, private_interfaces)]
+    Other(ThinkingDepth),
+}
+impl AI_ThinkingDepth {
+    // const THINKING_DEPTH_DEFAULT       : ThinkingDepth = ThinkingDepth(1);
+    const THINKING_DEPTH_FOR_TRAINING  : ThinkingDepth = ThinkingDepth(CHESS_NN_THINK_DEPTH_FOR_TRAINING);
+    const THINKING_DEPTH_FOR_TOURNAMENT: ThinkingDepth = ThinkingDepth(CHESS_NN_THINK_DEPTH_IN_TOURNAMENT);
+    const THINKING_DEPTH_FOR_VS_HMAN   : ThinkingDepth = ThinkingDepth(CHESS_NN_THINK_DEPTH_VS_HUMAN);
+    const fn get(&self) -> ThinkingDepth {
+        match self {
+            // Self::Default => unreachable!("should set mode"),
+            Self::Training => Self::THINKING_DEPTH_FOR_TRAINING,
+            Self::Tournament => Self::THINKING_DEPTH_FOR_TOURNAMENT,
+            Self::VsHuman => Self::THINKING_DEPTH_FOR_VS_HMAN,
+            Self::Other(thinking_depth) => *thinking_depth,
+        }
+    }
+}
+
+// impl Default for AI_ThinkingDepth {
+//     fn default() -> Self {
+//         Self::Default
+//     }
+// }
+
+#[derive(Debug, Clone, Copy)]
+struct ThinkingDepth(u8);
+
+impl ThinkingDepth {
+    const fn get(&self) -> u8 {
+        self.0
     }
 }
 
@@ -139,6 +201,7 @@ mod move_score_weight {
         match depth {
             0 => unreachable!(),
             1 => {
+                // TODO(optimization): parallel processing
                 fn analyze(board: Board, nn: &ChessNeuralNetwork) -> float {
                     let input_for_nn = board_to_vector_for_nn(board);
                     // println!("input_for_nn = {:?}", array_board);

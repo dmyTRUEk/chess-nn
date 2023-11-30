@@ -25,11 +25,11 @@ impl FiniteStateMachine {
 }
 
 impl Player for FiniteStateMachine {
-    fn select_move(&self, board: Board) -> MaybeChessMove {
-        MaybeChessMove::Move(
+    fn select_move(&self, board: Board) -> Option<MaybeChessMove> {
+        Some(MaybeChessMove::Move(
             self.select(&board)
                 .unwrap_or_else(|| select_random_move(&board))
-        )
+        ))
     }
 }
 

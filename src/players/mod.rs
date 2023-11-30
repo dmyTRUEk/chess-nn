@@ -13,7 +13,7 @@ pub type BoxDynPlayer<'a> = Box<&'a (dyn Player + Send + Sync)>;
 
 pub trait Player {
     // TODO(optimization?): pass by ref.
-    fn select_move(&self, board: Board) -> MaybeChessMove;
+    fn select_move(&self, board: Board) -> Option<MaybeChessMove>;
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

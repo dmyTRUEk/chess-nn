@@ -63,6 +63,7 @@ impl AIsGenerator {
         let activation_function: Option<LayerSpecs> = if rng.gen_bool(self.multi_af_prob) { None } else { Some(gen_af()) };
         let af_to_string = |afs: LayerSpecs| { format!("{afs:?}").trim_start_matches("AF_").to_string() };
         let mut layers = Vec::<LayerSpecs>::with_capacity(2*layers_number+1);
+        // TODO(refactor): rename this var.
         let name: Option<String> = activation_function.map(af_to_string);
         let mut name_parts: Vec<String> = vec![];
         if WRITE_FIRST_AND_LAST_LAYERS_IN_NAME {
@@ -88,7 +89,7 @@ impl AIsGenerator {
         } else {
             name_parts_joined
         };
-        AI::new(
+        AI::new_for_training(
             final_name,
             ChessNeuralNetwork::from_layers_specs(layers),
         )
