@@ -61,6 +61,8 @@ use crate::{
 
 
 
+// TODO(refactor): separate consts into local(here) modules
+
 const FILENAMES_ALL_DATA: &[&str] = &[
     // "positions/lt_part1_evaluated_2023-11-11_00-18-58",
     // "positions/lt_part2_evaluated_2023-11-12_12-48-37",
@@ -92,8 +94,8 @@ mod fully_connected_layer_initial_values {
 // const NUMBER_OF_DEPTH_CHANNELS: NumberOfDepthChannels = NumberOfDepthChannels::Two;
 const NUMBER_OF_DEPTH_CHANNELS: NumberOfDepthChannels = NumberOfDepthChannels::Three { use_opposite_signs: false };
 // const NUMBER_OF_DEPTH_CHANNELS: NumberOfDepthChannels = NumberOfDepthChannels::Four;
-const NUMBER_OF_DIFFERENT_CHESS_PIECES: usize = chess::NUM_PIECES;  // TODO: assert_eq 6
-const NUMBER_OF_SQUARES_ON_CHESS_BOARD: usize = chess::NUM_SQUARES; // TODO: assert_eq 64
+const NUMBER_OF_DIFFERENT_CHESS_PIECES: usize = chess::NUM_PIECES;  // TODO?: assert_eq 6
+const NUMBER_OF_SQUARES_ON_CHESS_BOARD: usize = chess::NUM_SQUARES; // TODO?: assert_eq 64
 const NN_INPUT_SIZE: usize = { // 768 or 1152 or 1536
     NUMBER_OF_DEPTH_CHANNELS.discriminant()
     * NUMBER_OF_DIFFERENT_CHESS_PIECES
