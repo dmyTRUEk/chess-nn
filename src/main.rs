@@ -1156,29 +1156,32 @@ fn play_tournament(ai_players: &mut Vec<AIwithRating>, config: PlayTournametConf
 }
 
 
-fn get_datetime() -> String {
+fn get_datetime_now() -> String {
     let now = chrono::Local::now();
-    let year  : u32 = now.format("%Y").to_string().parse().unwrap();
-    let month : u32 = now.format("%m").to_string().parse().unwrap();
-    let day   : u32 = now.format("%d").to_string().parse().unwrap();
-    let hour  : u32 = now.format("%H").to_string().parse().unwrap();
-    let minute: u32 = now.format("%M").to_string().parse().unwrap();
-    let second: u32 = now.format("%S").to_string().parse().unwrap();
-    let ms    : u32 = now.format("%3f").to_string().parse().unwrap();
-    format!("{year:04}_{month:02}_{day:02}__{hour:02}_{minute:02}_{second:02}_{ms:03}")
+    let year   = now.format("%Y");
+    let month  = now.format("%m");
+    let day    = now.format("%d");
+    let hour   = now.format("%H");
+    let minute = now.format("%M");
+    let second = now.format("%S");
+    let milis  = now.format("%3f");
+    // let micros = now.format("%6f");
+    // let nanos  = now.format("%9f");
+    format!("{year}-{month}-{day}_{hour}:{minute}:{second}.{milis}")
 }
 
 
 fn process_export_nn_as_images(ai_players: &Vec<AIwithRating>) {
     use std::{fs, io};
     use image::{ImageBuffer, RgbImage};
+    // TODO(enhancement): export all
     let Ok(nn_number) = prompt("Choose NN number to export: ").parse::<usize>() else { println!("Can't parse input as integer."); return };
     let nn_index = number_to_index(nn_number);
     let Some(ai_player) = ai_players.get(nn_index) else { println!("Number out of bounds."); return };
     let ai = ai_player.get_ai();
     let ai_name = ai.get_name();
     let nn = ai.get_nn();
-    let export_dir_name = &format!("./exports/{datetime}_{ai_name}", datetime=get_datetime());
+    let export_dir_name = &format!("./exports/{datetime}_{ai_name}", datetime=get_datetime_now());
     let io::Result::Ok(()) = fs::create_dir(export_dir_name) else { println!("Can't create directory to export."); return };
     for (i, layer) in nn.layers.iter().enumerate() {
         if let Some((weights_matrix, shift_vector)) = layer.get_fc_weights_shifts() {
