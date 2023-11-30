@@ -126,7 +126,7 @@ const TRAINING_EPOCHS: usize = 100;
 const TOURNAMENTS_NUMBER: usize = 3;
 const DEFAULT_RATING: float = 1_000.;
 const NN_RESULT_RANDOM_CHOICE: Option<(float, float)> = Some((0.9, 1.1));
-const PLAY_GAME_MOVES_LIMIT: usize = 200;
+const PLAY_GAME_MOVES_LIMIT: usize = 500;
 
 const PLAY_WITH_NNS_AFTER_TRAINING: bool = true;
 // TODO(feat): separately for tournament and play with human (maybe even not const?).
