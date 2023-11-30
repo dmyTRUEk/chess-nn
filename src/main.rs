@@ -18,7 +18,7 @@
 )]
 
 #![deny(
-    // dead_code,
+    dead_code,
     unreachable_patterns,
 )]
 
@@ -126,17 +126,16 @@ const TRAIN_TO_TEST_RATIO: float = 0.9;
 /// Starting learning rate, gradually decreases with epochs.
 const LEARNING_RATE_0: float = 0.1;
 const LEARNING_RATE_EXP_K: float = 2.;
-const TRAINING_EPOCHS: usize = 3;
+const TRAINING_EPOCHS: usize = 100;
 // TODO(feat): const for use depth analysis when training?
 const CHESS_NN_THINK_DEPTH_FOR_TRAINING: u8 = 1;
 
-const TOURNAMENTS_NUMBER: usize = 3;
+const TOURNAMENTS_NUMBER: usize = 10;
 const DEFAULT_RATING: float = 1_000.;
 const CHESS_NN_THINK_DEPTH_IN_TOURNAMENT: u8 = 1;
 const NN_RESULT_RANDOM_CHOICE: Option<(float, float)> = Some((0.9, 1.1));
 const PLAY_GAME_MOVES_LIMIT: usize = 500;
 
-const PLAY_WITH_NNS_AFTER_TRAINING: bool = true;
 const CHESS_NN_THINK_DEPTH_VS_HUMAN: u8 = 3; // 4 if parallel
 
 
@@ -223,7 +222,7 @@ fn main() {
     }
     print_ais_ratings(&ai_players, true);
 
-    if !PLAY_WITH_NNS_AFTER_TRAINING { return }
+    // return;
 
     set_ais_mode(&mut ai_players, AI_ThinkingDepth::VsHuman);
     let ai_players = ai_players;
