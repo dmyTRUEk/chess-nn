@@ -83,11 +83,10 @@ const FILENAME_TO_SAVE_POSITIONS: &str = "positions/lt_or_pc_partN";
 
 mod fully_connected_layer_initial_values {
     use crate::float_type::float;
-    // TODO: experiment with these values (set +-1), bc now they should work bc of depth channels
-    pub const W_MIN: float = -0.15; // this fixes getting NaN for at least Relu & Gaussian?
-    pub const W_MAX: float =  0.1;
-    pub const S_MIN: float = -0.1;
-    pub const S_MAX: float =  0.1;
+    pub const W_MIN: float = -1.;
+    pub const W_MAX: float =  1.;
+    pub const S_MIN: float = -1.;
+    pub const S_MAX: float =  1.;
 }
 
 // const NUMBER_OF_DEPTH_CHANNELS: NumberOfDepthChannels = NumberOfDepthChannels::Two;
