@@ -1179,9 +1179,9 @@ fn process_export_nn_as_images(ai_players: &Vec<AIwithRating>) {
     let nn_index = number_to_index(nn_number);
     let Some(ai_player) = ai_players.get(nn_index) else { println!("Number out of bounds."); return };
     let ai = ai_player.get_ai();
-    let ai_name = ai.get_name();
+    let ai_name = ai.get_name().replace(' ', "_");
     let nn = ai.get_nn();
-    let export_dir_name = &format!("./exports/{datetime}_{ai_name}", datetime=get_datetime_now());
+    let export_dir_name = &format!("./exports/{datetime}__{ai_name}", datetime=get_datetime_now());
     let io::Result::Ok(()) = fs::create_dir(export_dir_name) else { println!("Can't create directory to export."); return };
     for (i, layer) in nn.layers.iter().enumerate() {
         if let Some((weights_matrix, shift_vector)) = layer.get_fc_weights_shifts() {
