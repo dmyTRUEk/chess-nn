@@ -7,6 +7,7 @@
     // const_trait_impl,
     file_create_new,
     get_many_mut,
+    iter_array_chunks,
     iter_map_windows,
     let_chains,
     lint_reasons,
@@ -18,9 +19,8 @@
 )]
 
 #![deny(
-    dead_code,
     unreachable_patterns,
-    // unused, // TODO: enable
+    unused,
 )]
 
 
@@ -28,6 +28,7 @@ use std::{
     cmp::Ordering,
     collections::HashMap,
     hash::Hash,
+    ops::{Div, Rem},
     str::FromStr,
 };
 
@@ -1206,7 +1207,6 @@ fn process_export_nn_as_images(ai_players: &Vec<AIwithRating>) {
                     let img = convert::<DEBUG>(weights_matrix, Some(arrangement));
                     let ImageResult::Ok(()) = img.save(file_name_wm_smart) else { println!("Can't save the smart image#{i}."); continue };
                 }
-                panic!();
             }
         }
     }
@@ -1227,10 +1227,6 @@ fn weights_matrix_to_image_simple(weights_matrix: &Matrix) -> RgbImage {
     let mut img: RgbImage = ImageBuffer::new(w as u32, h as u32);
     for y in 0..h {
         for x in 0..w {
-            println!();
-            println!("wm_rows = {wm_rows}, wm_cols = {wm_cols}");
-            println!("w = {w}, h = {h}");
-            println!("x = {x}, y = {y}");
             let color = rgb_from_value(weights_matrix[(x, y)]);
             img[(x as u32, y as u32)] = Rgb(color);
         }
@@ -1239,12 +1235,13 @@ fn weights_matrix_to_image_simple(weights_matrix: &Matrix) -> RgbImage {
 }
 
 mod weights_matrix_to_image_smart {
+    use nalgebra::{DMatrix, SMatrix};
+
     use super::*; // TODO(refactor): write explicit `use`s.
 
-    const SPACING_BETWEEN_COLORS : usize = 4;
-    const SPACING_BETWEEN_OUTPUTS: usize = 2;
-    const SPACING_BETWEEN_PIECES : usize = 1;
-    // TODO(feat): remake to SPACING_MAJOR, SPACING_MINOR, SPACING_SUB_MINOR.
+    const SPACING_MAJOR: usize = 20;
+    const SPACING_MINOR: usize = 10;
+    const SPACING_SUB_MINOR: usize = 2;
 
     const NUMBER_OF_FILES_RANKS: usize = 8;
 
@@ -1254,63 +1251,125 @@ mod weights_matrix_to_image_smart {
     const _6 : usize = NUMBER_OF_DIFFERENT_CHESS_PIECES;
 
     pub fn convert<const DEBUG: bool>(weights_matrix: &Matrix, arrangement: Option<Arrangement>) -> RgbImage {
+        use Arrangement::*;
+
         let arrangement = arrangement.unwrap_or_default();
         let weights_matrix = weights_matrix.transpose();
-        let (wm_rows, wm_cols) = weights_matrix.shape();
-        let (w, h) = w_h_from_col_row::<DEBUG>(wm_cols, wm_rows, arrangement);
-        let (w, h) = wh_max_to_image_size(w, h, arrangement);
-        // assert_eq!(wm_rows * wm_cols, w * h);
+        let (wm_rows, _wm_cols) = weights_matrix.shape();
 
-        let mut img: RgbImage = ImageBuffer::new(w as u32, h as u32);
-        let mut out_of_bounds: u64 = 0;
-        let mut total: u64 = 0;
-        for r in 0..wm_rows {
-            for c in 0..wm_cols {
-                let (w, h) = w_h_from_col_row::<DEBUG>(c, r, arrangement);
-                // let chess_board_square_index = c % _64;
-                // let (dw, dh) = chess_board_square_index.mod_div(_8);
-                let (x, y) = (w, h);
-                // let (x, y) = (w + dw, h + dh);
-                let color = rgb_from_value(weights_matrix[(r, c)]);
-                if let Some(pixel) = img.get_pixel_mut_checked(x as u32, y as u32) {
-                    *pixel = Rgb(color);
-                } else {
-                    out_of_bounds += 1;
-                    println!();
-                    println!("XY OUT OF BOUNDS:");
-                    println!("wm_rows = {wm_rows}, wm_cols = {wm_cols}");
-                    println!("r = {r}, c = {c}");
-                    println!("w = {w}, h = {h}");
-                    // println!("chess_board_square_index = {chess_board_square_index}");
-                    // println!("dw = {dw}, dh = {dh}");
-                    println!("x = {x}, y = {y}");
+        let colors  = NUMBER_OF_DEPTH_CHANNELS.discriminant();
+        let outputs = wm_rows;
+        let pieces  = _6;
+        let (boards_rows, boards_cols) = {
+            match arrangement {
+                Y_Colors_X_OutputsPieces => (colors, outputs*pieces),
+                Y_Colors_X_PiecesOutputs => (colors, pieces*outputs),
+                Y_Outputs_X_ColorsPieces => (outputs, colors*pieces),
+                Y_Outputs_X_PiecesColors => (outputs, pieces*colors),
+                Y_Pieces_X_ColorsOutputs => (pieces, colors*outputs),
+                Y_Pieces_X_OutputsColors => (pieces, outputs*colors),
+            }
+        };
+
+        assert_eq!(0, weights_matrix.len() % 64);
+        let boards = DMatrix::<SMatrix<float, _8, _8>>::from_iterator(boards_rows, boards_cols,
+            weights_matrix
+                .iter()
+                .copied()
+                .array_chunks::<_64>()
+                .map(|column| {
+                    // TODO: RECHECK
+                    SMatrix::<float, _8, _8>::from_row_slice(&column)
+                    // SMatrix::<float, _8, _8>::from_column_slice(&column)
+                })
+        );
+        assert_eq!((boards_rows, boards_cols), boards.shape());
+
+        // TODO: SWAP ROWS/COLS IF SPECIFIC ARRANGEMENT
+
+        println!("boards.shape = {:?}", boards.shape());
+        let (boards_flatten_rows, boards_flatten_cols) = (boards_rows*_8, boards_cols*_8);
+        let mut boards_flatten = DMatrix::<float>::from_iterator(boards_flatten_rows, boards_flatten_cols,
+            boards
+                .iter()
+                .map(|board| board.iter())
+                .flatten()
+                .copied()
+        );
+        println!("boards_flatten.shape = {:?}", boards_flatten.shape());
+
+        // TODO(refactor): extract spacing into mathod.
+        for w in (1..boards_flatten_cols).rev() {
+            let spacing = match arrangement {
+                Y_Colors_X_OutputsPieces => {
+                    match w.mod_div(_8) {
+                        (0, w_div_8) if w_div_8.is_divisible_by(pieces) => SPACING_MINOR,
+                        (0, _) => SPACING_SUB_MINOR,
+                        _ => 0
+                    }
                 }
-                total += 1;
+                Y_Colors_X_PiecesOutputs => {
+                    match w.mod_div(_8) {
+                        (0, w_div_8) if w_div_8.is_divisible_by(outputs) => SPACING_MINOR,
+                        (0, _) => SPACING_SUB_MINOR,
+                        _ => 0
+                    }
+                }
+                Y_Outputs_X_ColorsPieces => {
+                    match w.mod_div(_8) {
+                        (0, w_div_8) if w_div_8.is_divisible_by(pieces) => SPACING_MINOR,
+                        (0, _) => SPACING_SUB_MINOR,
+                        _ => 0
+                    }
+                }
+                Y_Outputs_X_PiecesColors => {
+                    match w.mod_div(_8) {
+                        (0, w_div_8) if w_div_8.is_divisible_by(colors) => SPACING_MINOR,
+                        (0, _) => SPACING_SUB_MINOR,
+                        _ => 0
+                    }
+                }
+                Y_Pieces_X_ColorsOutputs => {
+                    match w.mod_div(_8) {
+                        (0, w_div_8) if w_div_8.is_divisible_by(outputs) => SPACING_MINOR,
+                        (0, _) => SPACING_SUB_MINOR,
+                        _ => 0
+                    }
+                }
+                Y_Pieces_X_OutputsColors => {
+                    match w.mod_div(_8) {
+                        (0, w_div_8) if w_div_8.is_divisible_by(colors) => SPACING_MINOR,
+                        (0, _) => SPACING_SUB_MINOR,
+                        _ => 0
+                    }
+                }
+            };
+            boards_flatten = boards_flatten.insert_columns(w, spacing, 0.);
+        }
+
+        // TODO(refactor)?: extract spacing into mathod.
+        for h in (1..boards_flatten_rows).rev() {
+            let spacing = match arrangement {
+                Y_Colors_X_OutputsPieces | Y_Colors_X_PiecesOutputs => if h.is_divisible_by(_8) { SPACING_MAJOR } else { 0 }
+                Y_Outputs_X_ColorsPieces | Y_Outputs_X_PiecesColors => if h.is_divisible_by(_8) { SPACING_MAJOR } else { 0 }
+                Y_Pieces_X_ColorsOutputs | Y_Pieces_X_OutputsColors => if h.is_divisible_by(_8) { SPACING_MAJOR } else { 0 }
+            };
+            boards_flatten = boards_flatten.insert_rows(h, spacing, 0.);
+        }
+
+        let boards_flatten_intersperse = boards_flatten;
+        let (bfi_rows, bfi_cols) = boards_flatten_intersperse.shape();
+
+        let mut img: RgbImage = ImageBuffer::new(bfi_cols as u32, bfi_rows as u32);
+        for r in 0..bfi_rows {
+            for c in 0..bfi_cols {
+                let (w, h) = (c, r);
+                let color = rgb_from_value(boards_flatten_intersperse[(r, c)]);
+                img[(w as u32, h as u32)] = Rgb(color);
             }
         }
 
-        println!();
-        let percentage: float = 100. * (out_of_bounds as float) / (total as float);
-        println!("out_of_bounds = {out_of_bounds}, total = {total}, percentage = {percentage:.2}%");
-        println!();
         img
-    }
-
-    /// bc we don't want empty pixels at right and bottom.
-    const fn wh_max_to_image_size(w: usize, h: usize, arrangement: Arrangement) -> (usize, usize) {
-        use Arrangement::*;
-        use SPACING_BETWEEN_COLORS  as C;
-        use SPACING_BETWEEN_OUTPUTS as O;
-        use SPACING_BETWEEN_PIECES  as P;
-        let (dh, dw): (usize, usize) = match arrangement {
-            Y_Colors_X_OutputsPieces => (C, O * (P-1)),
-            Y_Colors_X_PiecesOutputs => (C, P * (O-1)),
-            Y_Outputs_X_ColorsPieces => (O, C * (P-1)),
-            Y_Outputs_X_PiecesColors => (O, P * (C-1)),
-            Y_Pieces_X_ColorsOutputs => (P, C * (O-1)),
-            Y_Pieces_X_OutputsColors => (P, O * (C-1)),
-        };
-        (w - dw, h - dh)
     }
 
     /// DC = Depth Channel
@@ -1397,201 +1456,6 @@ mod weights_matrix_to_image_smart {
             Self::Y_Colors_X_OutputsPieces
         }
     }
-
-    fn w_h_from_col_row<const DEBUG: bool>(col: usize, row: usize, arrangement: Arrangement) -> (usize, usize) {
-        use Arrangement::*;
-        if DEBUG { println!("col = {col}, row = {row}") }
-        (match arrangement {
-            Y_Colors_X_OutputsPieces => w_h_from_col_row__y_colors_x_outputs_pieces::<DEBUG>,
-            Y_Colors_X_PiecesOutputs => w_h_from_col_row__y_colors_x_pieces_outputs::<DEBUG>,
-            Y_Outputs_X_ColorsPieces => w_h_from_col_row__y_outputs_x_colors_pieces::<DEBUG>,
-            Y_Outputs_X_PiecesColors => w_h_from_col_row__y_outputs_x_pieces_colors::<DEBUG>,
-            Y_Pieces_X_ColorsOutputs => w_h_from_col_row__y_pieces_x_colors_outputs::<DEBUG>,
-            Y_Pieces_X_OutputsColors => w_h_from_col_row__y_pieces_x_outputs_colors::<DEBUG>,
-        })(col, row)
-    }
-
-    #[allow(non_snake_case)] // TODO(when fixed): change to `expect`.
-    fn w_h_from_col_row__y_colors_x_outputs_pieces<const DEBUG: bool>(col: usize, row: usize) -> (usize, usize) {
-        let (index_of_color_depchan, index_in_color_depchan) = col.div_mod(NN_INPUT_SIZE_PER_COLOR_CHANNEL);
-        if DEBUG { println!("index_of_color_depchan = {index_of_color_depchan}, index_in_color_depchan = {index_in_color_depchan}") }
-        let (index_of_piece_depchan, index_in_piece_depchan) = index_in_color_depchan.div_mod(_64);
-        if DEBUG { println!("index_of_piece_depchan = {index_of_piece_depchan}, index_in_piece_depchan = {index_in_piece_depchan}") }
-        let (w_in_piece_depchan, h_in_piece_depchan) = index_in_piece_depchan.mod_div(_8);
-        if DEBUG { println!("w_in_piece_depchan = {w_in_piece_depchan}, h_in_piece_depchan = {h_in_piece_depchan}") }
-        let w = {
-            w_in_piece_depchan
-            + index_of_piece_depchan * (_8 + SPACING_BETWEEN_PIECES)
-            + row * _6 * (_8 + SPACING_BETWEEN_OUTPUTS)
-        };
-        let h = {
-            h_in_piece_depchan
-            + index_of_color_depchan * (_8 + SPACING_BETWEEN_COLORS)
-        };
-        (w, h)
-    }
-
-    #[allow(non_snake_case)] // TODO(when fixed): change to `expect`.
-    fn w_h_from_col_row__y_colors_x_pieces_outputs<const DEBUG: bool>(col: usize, row: usize) -> (usize, usize) {
-        let (index_of_color_depchan, index_in_color_depchan) = col.div_mod(NN_INPUT_SIZE_PER_COLOR_CHANNEL);
-        if DEBUG { println!("index_of_color_depchan = {index_of_color_depchan}, index_in_color_depchan = {index_in_color_depchan}") }
-        // compile_error!();
-        let (index_of_piece_depchan, index_in_piece_depchan) = index_in_color_depchan.div_mod(_64);
-        if DEBUG { println!("index_of_piece_depchan = {index_of_piece_depchan}, index_in_piece_depchan = {index_in_piece_depchan}") }
-        let (w_in_piece_depchan, h_in_piece_depchan) = index_in_piece_depchan.mod_div(_8);
-        if DEBUG { println!("w_in_piece_depchan = {w_in_piece_depchan}, h_in_piece_depchan = {h_in_piece_depchan}") }
-        let w = {
-            w_in_piece_depchan
-            + index_of_piece_depchan * (_8 + SPACING_BETWEEN_PIECES)
-            + row * _6 * (_8 + SPACING_BETWEEN_OUTPUTS)
-        };
-        let h = {
-            h_in_piece_depchan
-            + index_of_color_depchan * (_8 + SPACING_BETWEEN_COLORS)
-        };
-        (w, h)
-    }
-
-    #[allow(non_snake_case)] // TODO(when fixed): change to `expect`.
-    fn w_h_from_col_row__y_outputs_x_colors_pieces<const DEBUG: bool>(col: usize, row: usize) -> (usize, usize) {
-        todo!()
-    }
-
-    #[allow(non_snake_case)] // TODO(when fixed): change to `expect`.
-    fn w_h_from_col_row__y_outputs_x_pieces_colors<const DEBUG: bool>(col: usize, row: usize) -> (usize, usize) {
-        todo!()
-    }
-
-    #[allow(non_snake_case)] // TODO(when fixed): change to `expect`.
-    fn w_h_from_col_row__y_pieces_x_colors_outputs<const DEBUG: bool>(col: usize, row: usize) -> (usize, usize) {
-        todo!()
-    }
-
-    #[allow(non_snake_case)] // TODO(when fixed): change to `expect`.
-    fn w_h_from_col_row__y_pieces_x_outputs_colors<const DEBUG: bool>(col: usize, row: usize) -> (usize, usize) {
-        todo!()
-    }
-
-    #[cfg(test)]
-    mod w_h_from_col_depchan {
-        use super::*;
-        mod y_colors_x_outputs_pieces {
-            use super::*;
-            use w_h_from_col_row__y_colors_x_outputs_pieces as w_h_from_col_row;
-            const ARRANGEMENT: Arrangement = Arrangement::Y_Colors_X_OutputsPieces;
-
-            #[test]
-            fn for_image_size() {
-                const DEPTH_CHANNELS: usize = 4;
-                const NUMBER_OF_INPUTS: usize = DEPTH_CHANNELS * NN_INPUT_SIZE_PER_COLOR_CHANNEL; // 1536
-                const NUMBER_OF_OUTPUTS: usize = 100;
-                const W_EXPECTED: usize = {
-                    NUMBER_OF_OUTPUTS * _6 * (_8 + SPACING_BETWEEN_OUTPUTS)
-                    - SPACING_BETWEEN_OUTPUTS * (SPACING_BETWEEN_PIECES - 1)
-                };
-                const H_EXPECTED: usize = {
-                    DEPTH_CHANNELS * (_8 + SPACING_BETWEEN_COLORS)
-                    - SPACING_BETWEEN_COLORS
-                };
-                let (w_actual, h_actual) = w_h_from_col_row::<true>(NUMBER_OF_INPUTS, NUMBER_OF_OUTPUTS);
-                let (w_actual, h_actual) = wh_max_to_image_size(w_actual, h_actual, ARRANGEMENT);
-                assert_eq!((W_EXPECTED, H_EXPECTED), (w_actual, h_actual)); // bc we don't want empty pixels at right and bottom.
-            }
-
-            #[test]
-            fn for_col_0() {
-                let col = 0;
-                assert_eq!(
-                    (1-1, 1-1), // -1 bc indices start from 0, not 1.
-                    w_h_from_col_row::<true>(col, 0)
-                );
-            }
-            #[test]
-            fn for_col_3() {
-                let col = 3;
-                assert_eq!(
-                    (4-1, 1-1), // -1 bc indices start from 0, not 1.
-                    w_h_from_col_row::<true>(col, 0)
-                );
-            }
-            #[test]
-            fn for_col_10() {
-                let col = 10;
-                assert_eq!(
-                    (3-1, 2-1), // -1 bc indices start from 0, not 1.
-                    w_h_from_col_row::<true>(col, 0)
-                );
-            }
-
-            #[test]
-            fn for_col_0_p_64() { // 0 + 64
-                // this test is based on `for_col_0`.
-                let col = 0 + 64;
-                assert_eq!(
-                    (1-1+_8+SPACING_BETWEEN_PIECES, 1-1),
-                    w_h_from_col_row::<true>(col, 0)
-                );
-            }
-            #[test]
-            fn for_col_3_p_64() { // 3 + 64
-                // this test is based on `for_col_3`.
-                let col = 3 + 64;
-                assert_eq!(
-                    (4-1+_8+SPACING_BETWEEN_PIECES, 1-1),
-                    w_h_from_col_row::<true>(col, 0)
-                );
-            }
-            #[test]
-            fn for_col_10_p_64() { // 10 + 64
-                // this test is based on `for_col_10`.
-                let col = 10 + 64;
-                assert_eq!(
-                    (3-1+_8+SPACING_BETWEEN_PIECES, 2-1),
-                    w_h_from_col_row::<true>(col, 0)
-                );
-            }
-        }
-
-        mod y_colors_x_pieces_outputs {
-            use super::*;
-            use w_h_from_col_row__y_colors_x_pieces_outputs as w_h_from_col_row;
-            const ARRANGEMENT: Arrangement = Arrangement::Y_Colors_X_PiecesOutputs;
-
-            #[ignore]
-            #[test]
-            fn for_image_size() {
-                const DEPTH_CHANNELS: usize = 4;
-                const NUMBER_OF_INPUTS: usize = DEPTH_CHANNELS * NN_INPUT_SIZE_PER_COLOR_CHANNEL; // 1536
-                const NUMBER_OF_OUTPUTS: usize = 100;
-                const W_EXPECTED: usize = {
-                    NUMBER_OF_OUTPUTS * _6 * (_8 + SPACING_BETWEEN_OUTPUTS)
-                    - SPACING_BETWEEN_OUTPUTS * (SPACING_BETWEEN_PIECES + 1)
-                };
-                const H_EXPECTED: usize = {
-                    DEPTH_CHANNELS * (_8 + SPACING_BETWEEN_COLORS) - SPACING_BETWEEN_COLORS
-                };
-                let (w_actual, h_actual) = w_h_from_col_row::<true>(NUMBER_OF_INPUTS, NUMBER_OF_OUTPUTS);
-                let (w_actual, h_actual) = wh_max_to_image_size(w_actual, h_actual, ARRANGEMENT);
-                assert_eq!((W_EXPECTED, H_EXPECTED), (w_actual, h_actual)); // bc we don't want empty pixels at right and bottom.
-            }
-
-            // TODO: other tests
-        }
-
-        mod y_outputs_x_colors_pieces {
-            // TODO: tests
-        }
-        mod y_outputs_x_pieces_colors {
-            // TODO: tests
-        }
-        mod y_pieces_x_colors_outputs {
-            // TODO: tests
-        }
-        mod y_pieces_x_outputs_colors {
-            // TODO: tests
-        }
-    }
-
 
     #[test]
     fn assert_number_of_files_ranks_eq_8() {
@@ -1740,16 +1604,23 @@ fn const_assert_number_of_squares_on_chess_board_eq_64() {
 
 
 
-trait ExtensionDivMod where Self: Sized {
-    fn div_mod(&self, modulo: Self) -> (Self, Self);
-    fn mod_div(&self, modulo: Self) -> (Self, Self);
-}
-impl ExtensionDivMod for usize {
-    fn div_mod(&self, modulo: Self) -> (Self, Self) {
+trait ExtensionDivMod where Self: Copy + Div<Self, Output = Self> + Rem<Self, Output = Self> {
+    fn div_mod(self, modulo: Self) -> (Self, Self) {
         (self / modulo, self % modulo)
     }
-    fn mod_div(&self, modulo: Self) -> (Self, Self) {
+    fn mod_div(self, modulo: Self) -> (Self, Self) {
         (self % modulo, self / modulo)
     }
+}
+impl<T: Copy + Div<Self, Output = Self> + Rem<Self, Output = Self>> ExtensionDivMod for T {}
+
+trait ExtenstionIsDivisibleBy where Self: Sized + Rem<Self, Output = Self> + Eq {
+    const ZERO: Self;
+    fn is_divisible_by(self, modulo: Self) -> bool {
+        self % modulo == Self::ZERO
+    }
+}
+impl ExtenstionIsDivisibleBy for usize {
+    const ZERO: Self = 0;
 }
 
