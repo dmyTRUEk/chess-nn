@@ -84,11 +84,11 @@ const FILENAMES_ALL_DATA: &[&str] = &[
     // "positions/pc_part4_evaluated_2023-11-13_18-45-15",
     // "positions/pc_part5_evaluated_2023-11-13_19-27-46",
     "positions/pc_part6_evaluated_2023-11-14_09-01-36",
-    // "positions/pc_part7_evaluated_2023-11-14_13-26-40",
-    // "positions/pc_part8_evaluated_2023-11-15_09-36-39",
-    // "positions/pc_part9_evaluated_2023-11-16_15-59-12",
-    // "positions/pc_part10_evaluated_2023-11-16_18-54-26",
-    // "positions/pc_part11_evaluated_2023-11-17_07-51-10",
+    "positions/pc_part7_evaluated_2023-11-14_13-26-40",
+    "positions/pc_part8_evaluated_2023-11-15_09-36-39",
+    "positions/pc_part9_evaluated_2023-11-16_15-59-12",
+    "positions/pc_part10_evaluated_2023-11-16_18-54-26",
+    "positions/pc_part11_evaluated_2023-11-17_07-51-10",
 ];
 const FILENAME_TO_SAVE_POSITIONS: &str = "positions/lt_or_pc_partN";
 
@@ -120,18 +120,19 @@ mod ais_generator_consts {
     pub const LAYERS_SIZES: &[usize] = &[200, 150, 100, 80, 60, 50, 35, 20, 10, 5, 3, 2];
 }
 
-const NUMBER_OF_NNS: usize = 1 * 12; // it's better be multiple of number of cores/threads on your machine, or else...
+const NUMBER_OF_NNS: usize = 3 * 12; // it's better be multiple of number of cores/threads on your machine, or else...
 
 const TRAIN_TO_TEST_RATIO: float = 0.9;
 
 /// Starting learning rate, gradually decreases with epochs.
 const LEARNING_RATE_0: float = 0.1;
 const LEARNING_RATE_EXP_K: float = 2.;
-const TRAINING_EPOCHS: usize = 2;
+const TRAINING_EPOCHS: usize = 100;
 // TODO(feat): const for use depth analysis when training?
+// TODO?: remove, because it's impossible (very very hard) to implement correctly due to nn.layer.input/output being set?
 const CHESS_NN_THINK_DEPTH_FOR_TRAINING: u8 = 1;
 
-const TOURNAMENTS_NUMBER: usize = 1;
+const TOURNAMENTS_NUMBER: usize = 10;
 const DEFAULT_RATING: float = 1_000.;
 const CHESS_NN_THINK_DEPTH_IN_TOURNAMENT: u8 = 1;
 const NN_RESULT_RANDOM_CHOICE: Option<(float, float)> = Some((0.9, 1.1));
