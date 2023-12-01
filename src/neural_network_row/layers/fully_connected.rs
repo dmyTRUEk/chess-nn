@@ -78,8 +78,8 @@ impl Layer for FullyConnected {
         input_error
     }
 
-    fn get_fc_weights_shifts(&self) -> Option<(Matrix, Vector)> {
-        Some((self.weights_matrix.clone(), self.shift_vector.clone()))
+    fn get_fc_weights_shifts(&self) -> Option<(&Matrix, &Vector)> {
+        Some((&self.weights_matrix, &self.shift_vector))
     }
 }
 

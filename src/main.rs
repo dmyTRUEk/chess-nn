@@ -20,6 +20,7 @@
 #![deny(
     dead_code,
     unreachable_patterns,
+    // unused, // TODO: enable
 )]
 
 
@@ -31,6 +32,8 @@ use std::{
 };
 
 use chess::{ALL_SQUARES, Action, Board, BoardBuilder, ChessMove, Color, Game, GameResult, MoveGen, Piece};
+use image::{ImageBuffer, RgbImage, ImageResult, Rgb};
+use linalg_types::Matrix;
 use rand::{Rng, seq::SliceRandom, thread_rng};
 use rayon::prelude::{IndexedParallelIterator, IntoParallelIterator, IntoParallelRefMutIterator, ParallelIterator};
 
@@ -80,11 +83,11 @@ const FILENAMES_ALL_DATA: &[&str] = &[
     // "positions/pc_part4_evaluated_2023-11-13_18-45-15",
     // "positions/pc_part5_evaluated_2023-11-13_19-27-46",
     "positions/pc_part6_evaluated_2023-11-14_09-01-36",
-    "positions/pc_part7_evaluated_2023-11-14_13-26-40",
-    "positions/pc_part8_evaluated_2023-11-15_09-36-39",
-    "positions/pc_part9_evaluated_2023-11-16_15-59-12",
-    "positions/pc_part10_evaluated_2023-11-16_18-54-26",
-    "positions/pc_part11_evaluated_2023-11-17_07-51-10",
+    // "positions/pc_part7_evaluated_2023-11-14_13-26-40",
+    // "positions/pc_part8_evaluated_2023-11-15_09-36-39",
+    // "positions/pc_part9_evaluated_2023-11-16_15-59-12",
+    // "positions/pc_part10_evaluated_2023-11-16_18-54-26",
+    // "positions/pc_part11_evaluated_2023-11-17_07-51-10",
 ];
 const FILENAME_TO_SAVE_POSITIONS: &str = "positions/lt_or_pc_partN";
 
@@ -99,13 +102,10 @@ mod fully_connected_layer_initial_values {
 // const NUMBER_OF_DEPTH_CHANNELS: NumberOfDepthChannels = NumberOfDepthChannels::Two;
 // const NUMBER_OF_DEPTH_CHANNELS: NumberOfDepthChannels = NumberOfDepthChannels::Three { use_opposite_signs: false };
 const NUMBER_OF_DEPTH_CHANNELS: NumberOfDepthChannels = NumberOfDepthChannels::Four;
-const NUMBER_OF_DIFFERENT_CHESS_PIECES: usize = chess::NUM_PIECES;  // TODO?: assert_eq 6
-const NUMBER_OF_SQUARES_ON_CHESS_BOARD: usize = chess::NUM_SQUARES; // TODO?: assert_eq 64
-const NN_INPUT_SIZE: usize = { // 768 or 1152 or 1536
-    NUMBER_OF_DEPTH_CHANNELS.discriminant()
-    * NUMBER_OF_DIFFERENT_CHESS_PIECES
-    * NUMBER_OF_SQUARES_ON_CHESS_BOARD
-};
+const NUMBER_OF_DIFFERENT_CHESS_PIECES: usize = chess::NUM_PIECES; // 6
+const NUMBER_OF_SQUARES_ON_CHESS_BOARD: usize = chess::NUM_SQUARES; // 64
+const NN_INPUT_SIZE_PER_COLOR_CHANNEL: usize = NUMBER_OF_DIFFERENT_CHESS_PIECES * NUMBER_OF_SQUARES_ON_CHESS_BOARD; // 384
+const NN_INPUT_SIZE: usize = NUMBER_OF_DEPTH_CHANNELS.discriminant() * NN_INPUT_SIZE_PER_COLOR_CHANNEL; // 768 or 1152 or 1536
 const NN_OUTPUT_SIZE: usize = 1;
 
 mod ais_generator_consts {
@@ -119,18 +119,18 @@ mod ais_generator_consts {
     pub const LAYERS_SIZES: &[usize] = &[200, 150, 100, 80, 60, 50, 35, 20, 10, 5, 3, 2];
 }
 
-const NUMBER_OF_NNS: usize = 3 * 12; // it's better be multiple of number of cores/threads on your machine, or else...
+const NUMBER_OF_NNS: usize = 1 * 12; // it's better be multiple of number of cores/threads on your machine, or else...
 
 const TRAIN_TO_TEST_RATIO: float = 0.9;
 
 /// Starting learning rate, gradually decreases with epochs.
 const LEARNING_RATE_0: float = 0.1;
 const LEARNING_RATE_EXP_K: float = 2.;
-const TRAINING_EPOCHS: usize = 100;
+const TRAINING_EPOCHS: usize = 2;
 // TODO(feat): const for use depth analysis when training?
 const CHESS_NN_THINK_DEPTH_FOR_TRAINING: u8 = 1;
 
-const TOURNAMENTS_NUMBER: usize = 10;
+const TOURNAMENTS_NUMBER: usize = 1;
 const DEFAULT_RATING: float = 1_000.;
 const CHESS_NN_THINK_DEPTH_IN_TOURNAMENT: u8 = 1;
 const NN_RESULT_RANDOM_CHOICE: Option<(float, float)> = Some((0.9, 1.1));
@@ -330,6 +330,7 @@ fn train_nns(ai_players: &mut Vec<AIwithRating>, train_and_test_data: TrainAndTe
                 let n = index_to_number(i);
                 let name = ai_player.get_ai().get_name();
                 (is_to_remove, format!("NN#{n}\tavg train error = {avg_train_error}\tavg test error = {avg_test_error}\t{name}"))
+                // TODO(optimization): also return time spent training to then sort them by it for efficiency
             })
             .unzip();
         let mut msg = format!("Epoch {epoch_number}/{TRAINING_EPOCHS}:\n", epoch_number=index_to_number(epoch));
@@ -1013,7 +1014,7 @@ fn play_tournament(ai_players: &mut Vec<AIwithRating>, config: PlayTournametConf
         i * ais_number + j
     };
     let ij_to_i_j = |ij: usize| -> (usize, usize) {
-        (ij / ais_number, ij % ais_number)
+        ij.div_mod(ais_number)
     };
 
     let nn_game_results: Vec<Option<Winner>> = (0..ais_number.pow(2)) // ij
@@ -1173,35 +1174,428 @@ fn get_datetime_now() -> String {
 
 fn process_export_nn_as_images(ai_players: &Vec<AIwithRating>) {
     use std::{fs, io};
-    use image::{ImageBuffer, RgbImage};
     // TODO(enhancement): export all
     let Ok(nn_number) = prompt("Choose NN number to export: ").parse::<usize>() else { println!("Can't parse input as integer."); return };
     let nn_index = number_to_index(nn_number);
     let Some(ai_player) = ai_players.get(nn_index) else { println!("Number out of bounds."); return };
+
     let ai = ai_player.get_ai();
     let ai_name = ai.get_name().replace(' ', "_");
     let nn = ai.get_nn();
+
     let export_dir_name = &format!("./exports/{datetime}__{ai_name}", datetime=get_datetime_now());
     let io::Result::Ok(()) = fs::create_dir(export_dir_name) else { println!("Can't create directory to export."); return };
+
     for (i, layer) in nn.layers.iter().enumerate() {
+        #[expect(unused_variables)]
         if let Some((weights_matrix, shift_vector)) = layer.get_fc_weights_shifts() {
-            let file_name = format!("{export_dir_name}/layer_{n}.png", n=index_to_number(i));
-            let (rows, cols) = weights_matrix.shape();
-            let (w, h) = (rows, cols);
-            let mut img: RgbImage = ImageBuffer::new(w as u32, h as u32);
-            for x in 0..w {
-                for y in 0..h {
-                    let g = 0;
-                    let value_f = 255. * weights_matrix[(x, y)];
-                    let value_u8: u8 = value_f.abs() as u8;
-                    let (r, b) = if value_f > 0. { (value_u8, 0) } else { (0, value_u8) };
-                    let color = [r, g, b];
-                    img[(x as u32, y as u32)] = image::Rgb(color);
-                }
-            }
-            let image::ImageResult::Ok(()) = img.save(file_name) else { println!("Can't save the image#{n}.", n=index_to_number(i)); continue };
+            let maybe_simple = if i == 0 { "_simple" } else { "" };
+            let file_name_wm_simple = format!(
+                "{export_dir_name}/layer_{i:02}{maybe_simple}.png"
+            );
+            let img = weights_matrix_to_image_simple(weights_matrix);
+            let ImageResult::Ok(()) = img.save(file_name_wm_simple) else { println!("Can't save the simple image#{i}."); continue };
+
             // TODO(feat): also export `shift_vector`.
+
+            if i == 0 {
+                use weights_matrix_to_image_smart::{Arrangement, convert};
+                const DEBUG: bool = true;
+                for arrangement in Arrangement::ALL {
+                    let file_name_wm_smart = format!("{export_dir_name}/layer_{i:02}_smart_{arrangement:?}.png");
+                    let img = convert::<DEBUG>(weights_matrix, Some(arrangement));
+                    let ImageResult::Ok(()) = img.save(file_name_wm_smart) else { println!("Can't save the smart image#{i}."); continue };
+                }
+                panic!();
+            }
         }
+    }
+    println!("Export finished successfully.");
+}
+
+fn rgb_from_value(value_f: float) -> [u8; 3] {
+    let g = 0;
+    let value_f = 255. * value_f;
+    let value_u8: u8 = value_f.abs() as u8;
+    let (r, b) = if value_f > 0. { (value_u8, 0) } else { (0, value_u8) };
+    [r, g, b]
+}
+
+fn weights_matrix_to_image_simple(weights_matrix: &Matrix) -> RgbImage {
+    let (wm_rows, wm_cols) = weights_matrix.shape();
+    let (w, h) = (wm_rows, wm_cols);
+    let mut img: RgbImage = ImageBuffer::new(w as u32, h as u32);
+    for y in 0..h {
+        for x in 0..w {
+            println!();
+            println!("wm_rows = {wm_rows}, wm_cols = {wm_cols}");
+            println!("w = {w}, h = {h}");
+            println!("x = {x}, y = {y}");
+            let color = rgb_from_value(weights_matrix[(x, y)]);
+            img[(x as u32, y as u32)] = Rgb(color);
+        }
+    }
+    img
+}
+
+mod weights_matrix_to_image_smart {
+    use super::*; // TODO(refactor): write explicit `use`s.
+
+    const SPACING_BETWEEN_COLORS : usize = 4;
+    const SPACING_BETWEEN_OUTPUTS: usize = 2;
+    const SPACING_BETWEEN_PIECES : usize = 1;
+    // TODO(feat): remake to SPACING_MAJOR, SPACING_MINOR, SPACING_SUB_MINOR.
+
+    const NUMBER_OF_FILES_RANKS: usize = 8;
+
+    // TODO?: REMOVE
+    const _64: usize = NUMBER_OF_SQUARES_ON_CHESS_BOARD;
+    const _8 : usize = NUMBER_OF_FILES_RANKS;
+    const _6 : usize = NUMBER_OF_DIFFERENT_CHESS_PIECES;
+
+    pub fn convert<const DEBUG: bool>(weights_matrix: &Matrix, arrangement: Option<Arrangement>) -> RgbImage {
+        let arrangement = arrangement.unwrap_or_default();
+        let weights_matrix = weights_matrix.transpose();
+        let (wm_rows, wm_cols) = weights_matrix.shape();
+        let (w, h) = w_h_from_col_row::<DEBUG>(wm_cols, wm_rows, arrangement);
+        let (w, h) = wh_max_to_image_size(w, h, arrangement);
+        // assert_eq!(wm_rows * wm_cols, w * h);
+
+        let mut img: RgbImage = ImageBuffer::new(w as u32, h as u32);
+        let mut out_of_bounds: u64 = 0;
+        let mut total: u64 = 0;
+        for r in 0..wm_rows {
+            for c in 0..wm_cols {
+                let (w, h) = w_h_from_col_row::<DEBUG>(c, r, arrangement);
+                // let chess_board_square_index = c % _64;
+                // let (dw, dh) = chess_board_square_index.mod_div(_8);
+                let (x, y) = (w, h);
+                // let (x, y) = (w + dw, h + dh);
+                let color = rgb_from_value(weights_matrix[(r, c)]);
+                if let Some(pixel) = img.get_pixel_mut_checked(x as u32, y as u32) {
+                    *pixel = Rgb(color);
+                } else {
+                    out_of_bounds += 1;
+                    println!();
+                    println!("XY OUT OF BOUNDS:");
+                    println!("wm_rows = {wm_rows}, wm_cols = {wm_cols}");
+                    println!("r = {r}, c = {c}");
+                    println!("w = {w}, h = {h}");
+                    // println!("chess_board_square_index = {chess_board_square_index}");
+                    // println!("dw = {dw}, dh = {dh}");
+                    println!("x = {x}, y = {y}");
+                }
+                total += 1;
+            }
+        }
+
+        println!();
+        let percentage: float = 100. * (out_of_bounds as float) / (total as float);
+        println!("out_of_bounds = {out_of_bounds}, total = {total}, percentage = {percentage:.2}%");
+        println!();
+        img
+    }
+
+    /// bc we don't want empty pixels at right and bottom.
+    const fn wh_max_to_image_size(w: usize, h: usize, arrangement: Arrangement) -> (usize, usize) {
+        use Arrangement::*;
+        use SPACING_BETWEEN_COLORS  as C;
+        use SPACING_BETWEEN_OUTPUTS as O;
+        use SPACING_BETWEEN_PIECES  as P;
+        let (dh, dw): (usize, usize) = match arrangement {
+            Y_Colors_X_OutputsPieces => (C, O * (P-1)),
+            Y_Colors_X_PiecesOutputs => (C, P * (O-1)),
+            Y_Outputs_X_ColorsPieces => (O, C * (P-1)),
+            Y_Outputs_X_PiecesColors => (O, P * (C-1)),
+            Y_Pieces_X_ColorsOutputs => (P, C * (O-1)),
+            Y_Pieces_X_OutputsColors => (P, O * (C-1)),
+        };
+        (w - dw, h - dh)
+    }
+
+    /// DC = Depth Channel
+    /// b = chess board (8 by x * 8 by y)
+    #[allow(non_camel_case_types)] // TODO(when fixed): use `expect`.
+    #[derive(Debug, Clone, Copy)]
+    pub enum Arrangement {
+        /// Firstly organize/split/sort in rows by COLORS, then in cols by OUTPUTS and then by PIECES.
+        /// b b b b b b   b b b b b b   ...
+        /// < out0 DC >   < out1 DC >   ...
+        /// ^ ^ ^ ^ ^ ^
+        /// | | | | | king
+        /// | | | | queen
+        /// | | | rook
+        /// | | bishop
+        /// | knight
+        /// pawn
+        Y_Colors_X_OutputsPieces,
+
+        /// Firstly organize/split/sort in rows by COLORS, then in cols by PIECES and then by OUTPUTS.
+        /// b b b ... b         b b b ... b b         ...
+        /// < pawn DC >         < knight DC >         ...
+        /// ^ ^ ^ ... ^
+        /// | | |     outputLast
+        /// | | output2
+        /// | output1
+        /// output0
+        Y_Colors_X_PiecesOutputs,
+
+        /// Firstly organize/split/sort in rows by OUTPUTS, then in cols by COLORS and then by PIECES.
+        /// b b b  b b b   ...            ...                      ...
+        /// < white DC >   < black DC >   < white and black DC >   < white and neg black DC >
+        /// ^ ^ ^  ^ ^ ^
+        /// | | |  | | king
+        /// | | |  | queen
+        /// | | |  rook
+        /// | | bishop
+        /// | knight
+        /// pawn
+        Y_Outputs_X_ColorsPieces,
+
+        /// Firstly organize/split/sort in rows by OUTPUTS, then in cols by PIECES and then by COLORS.
+        /// b  b   b  b   ...             ...             ...             ...            ...
+        /// < pawn DC >   < knight DC >   < bishop DC >   < rook DC >   < queen DC >   < king DC >
+        /// ^  ^   ^  ^
+        /// |  |   |  white and black neg DC
+        /// |  |   white and black DC
+        /// |  black DC
+        /// white DC
+        Y_Outputs_X_PiecesColors,
+
+        /// Firstly organize/split/sort in rows by PIECES, then in cols by COLORS and then by OUTPUTS.
+        /// b b b ...  b   ...            ...                      ...
+        /// < white DC >   < black DC >   < white and black DC >   < white and neg black DC >
+        /// ^ ^ ^ ...  ^
+        /// | | |      outputLast
+        /// | | output2
+        /// | output1
+        /// output0
+        Y_Pieces_X_ColorsOutputs,
+
+        /// Firstly organize/split/sort in rows by PIECES, then in cols by OUTPUTS and then by COLORS.
+        /// b b  b b   ...        ...        ...
+        /// < out0 >   < out1 >   < out2 >   ...
+        /// ^ ^  ^ ^
+        /// | |  | white and neg black DC
+        /// | |  white and black DC
+        /// | black DC
+        /// white DC
+        Y_Pieces_X_OutputsColors,
+    }
+    impl Arrangement {
+        pub const ALL: [Self; 6] = [
+            Self::Y_Colors_X_OutputsPieces,
+            Self::Y_Colors_X_PiecesOutputs,
+            Self::Y_Outputs_X_ColorsPieces,
+            Self::Y_Outputs_X_PiecesColors,
+            Self::Y_Pieces_X_ColorsOutputs,
+            Self::Y_Pieces_X_OutputsColors,
+        ];
+    }
+    impl Default for Arrangement {
+        fn default() -> Self {
+            Self::Y_Colors_X_OutputsPieces
+        }
+    }
+
+    fn w_h_from_col_row<const DEBUG: bool>(col: usize, row: usize, arrangement: Arrangement) -> (usize, usize) {
+        use Arrangement::*;
+        if DEBUG { println!("col = {col}, row = {row}") }
+        (match arrangement {
+            Y_Colors_X_OutputsPieces => w_h_from_col_row__y_colors_x_outputs_pieces::<DEBUG>,
+            Y_Colors_X_PiecesOutputs => w_h_from_col_row__y_colors_x_pieces_outputs::<DEBUG>,
+            Y_Outputs_X_ColorsPieces => w_h_from_col_row__y_outputs_x_colors_pieces::<DEBUG>,
+            Y_Outputs_X_PiecesColors => w_h_from_col_row__y_outputs_x_pieces_colors::<DEBUG>,
+            Y_Pieces_X_ColorsOutputs => w_h_from_col_row__y_pieces_x_colors_outputs::<DEBUG>,
+            Y_Pieces_X_OutputsColors => w_h_from_col_row__y_pieces_x_outputs_colors::<DEBUG>,
+        })(col, row)
+    }
+
+    #[allow(non_snake_case)] // TODO(when fixed): change to `expect`.
+    fn w_h_from_col_row__y_colors_x_outputs_pieces<const DEBUG: bool>(col: usize, row: usize) -> (usize, usize) {
+        let (index_of_color_depchan, index_in_color_depchan) = col.div_mod(NN_INPUT_SIZE_PER_COLOR_CHANNEL);
+        if DEBUG { println!("index_of_color_depchan = {index_of_color_depchan}, index_in_color_depchan = {index_in_color_depchan}") }
+        let (index_of_piece_depchan, index_in_piece_depchan) = index_in_color_depchan.div_mod(_64);
+        if DEBUG { println!("index_of_piece_depchan = {index_of_piece_depchan}, index_in_piece_depchan = {index_in_piece_depchan}") }
+        let (w_in_piece_depchan, h_in_piece_depchan) = index_in_piece_depchan.mod_div(_8);
+        if DEBUG { println!("w_in_piece_depchan = {w_in_piece_depchan}, h_in_piece_depchan = {h_in_piece_depchan}") }
+        let w = {
+            w_in_piece_depchan
+            + index_of_piece_depchan * (_8 + SPACING_BETWEEN_PIECES)
+            + row * _6 * (_8 + SPACING_BETWEEN_OUTPUTS)
+        };
+        let h = {
+            h_in_piece_depchan
+            + index_of_color_depchan * (_8 + SPACING_BETWEEN_COLORS)
+        };
+        (w, h)
+    }
+
+    #[allow(non_snake_case)] // TODO(when fixed): change to `expect`.
+    fn w_h_from_col_row__y_colors_x_pieces_outputs<const DEBUG: bool>(col: usize, row: usize) -> (usize, usize) {
+        let (index_of_color_depchan, index_in_color_depchan) = col.div_mod(NN_INPUT_SIZE_PER_COLOR_CHANNEL);
+        if DEBUG { println!("index_of_color_depchan = {index_of_color_depchan}, index_in_color_depchan = {index_in_color_depchan}") }
+        // compile_error!();
+        let (index_of_piece_depchan, index_in_piece_depchan) = index_in_color_depchan.div_mod(_64);
+        if DEBUG { println!("index_of_piece_depchan = {index_of_piece_depchan}, index_in_piece_depchan = {index_in_piece_depchan}") }
+        let (w_in_piece_depchan, h_in_piece_depchan) = index_in_piece_depchan.mod_div(_8);
+        if DEBUG { println!("w_in_piece_depchan = {w_in_piece_depchan}, h_in_piece_depchan = {h_in_piece_depchan}") }
+        let w = {
+            w_in_piece_depchan
+            + index_of_piece_depchan * (_8 + SPACING_BETWEEN_PIECES)
+            + row * _6 * (_8 + SPACING_BETWEEN_OUTPUTS)
+        };
+        let h = {
+            h_in_piece_depchan
+            + index_of_color_depchan * (_8 + SPACING_BETWEEN_COLORS)
+        };
+        (w, h)
+    }
+
+    #[allow(non_snake_case)] // TODO(when fixed): change to `expect`.
+    fn w_h_from_col_row__y_outputs_x_colors_pieces<const DEBUG: bool>(col: usize, row: usize) -> (usize, usize) {
+        todo!()
+    }
+
+    #[allow(non_snake_case)] // TODO(when fixed): change to `expect`.
+    fn w_h_from_col_row__y_outputs_x_pieces_colors<const DEBUG: bool>(col: usize, row: usize) -> (usize, usize) {
+        todo!()
+    }
+
+    #[allow(non_snake_case)] // TODO(when fixed): change to `expect`.
+    fn w_h_from_col_row__y_pieces_x_colors_outputs<const DEBUG: bool>(col: usize, row: usize) -> (usize, usize) {
+        todo!()
+    }
+
+    #[allow(non_snake_case)] // TODO(when fixed): change to `expect`.
+    fn w_h_from_col_row__y_pieces_x_outputs_colors<const DEBUG: bool>(col: usize, row: usize) -> (usize, usize) {
+        todo!()
+    }
+
+    #[cfg(test)]
+    mod w_h_from_col_depchan {
+        use super::*;
+        mod y_colors_x_outputs_pieces {
+            use super::*;
+            use w_h_from_col_row__y_colors_x_outputs_pieces as w_h_from_col_row;
+            const ARRANGEMENT: Arrangement = Arrangement::Y_Colors_X_OutputsPieces;
+
+            #[test]
+            fn for_image_size() {
+                const DEPTH_CHANNELS: usize = 4;
+                const NUMBER_OF_INPUTS: usize = DEPTH_CHANNELS * NN_INPUT_SIZE_PER_COLOR_CHANNEL; // 1536
+                const NUMBER_OF_OUTPUTS: usize = 100;
+                const W_EXPECTED: usize = {
+                    NUMBER_OF_OUTPUTS * _6 * (_8 + SPACING_BETWEEN_OUTPUTS)
+                    - SPACING_BETWEEN_OUTPUTS * (SPACING_BETWEEN_PIECES - 1)
+                };
+                const H_EXPECTED: usize = {
+                    DEPTH_CHANNELS * (_8 + SPACING_BETWEEN_COLORS)
+                    - SPACING_BETWEEN_COLORS
+                };
+                let (w_actual, h_actual) = w_h_from_col_row::<true>(NUMBER_OF_INPUTS, NUMBER_OF_OUTPUTS);
+                let (w_actual, h_actual) = wh_max_to_image_size(w_actual, h_actual, ARRANGEMENT);
+                assert_eq!((W_EXPECTED, H_EXPECTED), (w_actual, h_actual)); // bc we don't want empty pixels at right and bottom.
+            }
+
+            #[test]
+            fn for_col_0() {
+                let col = 0;
+                assert_eq!(
+                    (1-1, 1-1), // -1 bc indices start from 0, not 1.
+                    w_h_from_col_row::<true>(col, 0)
+                );
+            }
+            #[test]
+            fn for_col_3() {
+                let col = 3;
+                assert_eq!(
+                    (4-1, 1-1), // -1 bc indices start from 0, not 1.
+                    w_h_from_col_row::<true>(col, 0)
+                );
+            }
+            #[test]
+            fn for_col_10() {
+                let col = 10;
+                assert_eq!(
+                    (3-1, 2-1), // -1 bc indices start from 0, not 1.
+                    w_h_from_col_row::<true>(col, 0)
+                );
+            }
+
+            #[test]
+            fn for_col_0_p_64() { // 0 + 64
+                // this test is based on `for_col_0`.
+                let col = 0 + 64;
+                assert_eq!(
+                    (1-1+_8+SPACING_BETWEEN_PIECES, 1-1),
+                    w_h_from_col_row::<true>(col, 0)
+                );
+            }
+            #[test]
+            fn for_col_3_p_64() { // 3 + 64
+                // this test is based on `for_col_3`.
+                let col = 3 + 64;
+                assert_eq!(
+                    (4-1+_8+SPACING_BETWEEN_PIECES, 1-1),
+                    w_h_from_col_row::<true>(col, 0)
+                );
+            }
+            #[test]
+            fn for_col_10_p_64() { // 10 + 64
+                // this test is based on `for_col_10`.
+                let col = 10 + 64;
+                assert_eq!(
+                    (3-1+_8+SPACING_BETWEEN_PIECES, 2-1),
+                    w_h_from_col_row::<true>(col, 0)
+                );
+            }
+        }
+
+        mod y_colors_x_pieces_outputs {
+            use super::*;
+            use w_h_from_col_row__y_colors_x_pieces_outputs as w_h_from_col_row;
+            const ARRANGEMENT: Arrangement = Arrangement::Y_Colors_X_PiecesOutputs;
+
+            #[ignore]
+            #[test]
+            fn for_image_size() {
+                const DEPTH_CHANNELS: usize = 4;
+                const NUMBER_OF_INPUTS: usize = DEPTH_CHANNELS * NN_INPUT_SIZE_PER_COLOR_CHANNEL; // 1536
+                const NUMBER_OF_OUTPUTS: usize = 100;
+                const W_EXPECTED: usize = {
+                    NUMBER_OF_OUTPUTS * _6 * (_8 + SPACING_BETWEEN_OUTPUTS)
+                    - SPACING_BETWEEN_OUTPUTS * (SPACING_BETWEEN_PIECES + 1)
+                };
+                const H_EXPECTED: usize = {
+                    DEPTH_CHANNELS * (_8 + SPACING_BETWEEN_COLORS) - SPACING_BETWEEN_COLORS
+                };
+                let (w_actual, h_actual) = w_h_from_col_row::<true>(NUMBER_OF_INPUTS, NUMBER_OF_OUTPUTS);
+                let (w_actual, h_actual) = wh_max_to_image_size(w_actual, h_actual, ARRANGEMENT);
+                assert_eq!((W_EXPECTED, H_EXPECTED), (w_actual, h_actual)); // bc we don't want empty pixels at right and bottom.
+            }
+
+            // TODO: other tests
+        }
+
+        mod y_outputs_x_colors_pieces {
+            // TODO: tests
+        }
+        mod y_outputs_x_pieces_colors {
+            // TODO: tests
+        }
+        mod y_pieces_x_colors_outputs {
+            // TODO: tests
+        }
+        mod y_pieces_x_outputs_colors {
+            // TODO: tests
+        }
+    }
+
+
+    #[test]
+    fn assert_number_of_files_ranks_eq_8() {
+        assert_eq!(8, _8);
     }
 }
 
@@ -1301,7 +1695,7 @@ impl NumberOfDepthChannels {
 
 #[cfg(test)]
 mod number_of_depth_channels {
-    /// These tests are critical bc if they fail it probably will lead to big and scary UB.
+    /// These tests are critical bc if they fail it will probably lead to big and scary UB.
     mod discriminant {
         use crate::NumberOfDepthChannels as NODC;
         #[test]
@@ -1332,6 +1726,30 @@ mod number_of_depth_channels {
                 NODC::Four.discriminant()
             );
         }
+    }
+}
+
+#[test]
+fn const_assert_number_of_different_chess_pieces_eq_6() {
+    assert_eq!(6, NUMBER_OF_DIFFERENT_CHESS_PIECES);
+}
+#[test]
+fn const_assert_number_of_squares_on_chess_board_eq_64() {
+    assert_eq!(64, NUMBER_OF_SQUARES_ON_CHESS_BOARD);
+}
+
+
+
+trait ExtensionDivMod where Self: Sized {
+    fn div_mod(&self, modulo: Self) -> (Self, Self);
+    fn mod_div(&self, modulo: Self) -> (Self, Self);
+}
+impl ExtensionDivMod for usize {
+    fn div_mod(&self, modulo: Self) -> (Self, Self) {
+        (self / modulo, self % modulo)
+    }
+    fn mod_div(&self, modulo: Self) -> (Self, Self) {
+        (self % modulo, self / modulo)
     }
 }
 

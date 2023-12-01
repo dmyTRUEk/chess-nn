@@ -98,7 +98,7 @@ pub trait Layer: CloneLayer {
     fn backward_propagation(&mut self, output_error: Vector, learning_rate: float) -> Vector;
 
     /// Get Weights and Shifts of FullyConnected layer.
-    fn get_fc_weights_shifts(&self) -> Option<(Matrix, Vector)> { None }
+    fn get_fc_weights_shifts(&self) -> Option<(&Matrix, &Vector)> { None }
 }
 
 
