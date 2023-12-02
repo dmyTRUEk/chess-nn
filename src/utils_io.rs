@@ -11,6 +11,14 @@ pub fn print_and_flush<T: std::fmt::Display>(t: T) {
     flush();
 }
 
+pub fn println<T: std::fmt::Display>(t: T) {
+    println!("{t}");
+}
+
+pub fn prompt(s: &str) -> String {
+    print_and_flush(s);
+    read_line()
+}
 
 pub fn read_line() -> String {
     use std::io::stdin;
@@ -23,10 +31,5 @@ pub fn wait_for_enter() {
     // No need to "optimize" it be reimplementing without `.trim()` and `.to_string()`
     // bc it's anyway waiting for user to press enter.
     let _ = read_line();
-}
-
-pub fn prompt(s: &str) -> String {
-    print_and_flush(s);
-    read_line()
 }
 

@@ -33,8 +33,7 @@ use std::{
 };
 
 use chess::{ALL_SQUARES, Action, Board, BoardBuilder, ChessMove, Color, Game, GameResult, MoveGen, Piece};
-use image::{ImageBuffer, RgbImage, ImageResult, Rgb};
-use linalg_types::Matrix;
+use image::{ImageBuffer, ImageResult, Rgb, RgbImage};
 use rand::{Rng, seq::SliceRandom, thread_rng};
 use rayon::prelude::{IndexedParallelIterator, IntoParallelIterator, IntoParallelRefMutIterator, ParallelIterator};
 
@@ -50,6 +49,7 @@ mod utils_io;
 
 use crate::{
     float_type::float,
+    linalg_types::Matrix,
     math_aliases::exp,
     neural_network_row::{ChessNeuralNetwork, layers::LayerSpecs as LS, vector_type::Vector},
     players::{
@@ -65,7 +65,7 @@ use crate::{
         rating::Rating,
         rating::update_ratings,
     },
-    utils_io::{print_and_flush, prompt, wait_for_enter},
+    utils_io::{print_and_flush, println, prompt, wait_for_enter},
 };
 
 
@@ -148,6 +148,7 @@ fn main() {
 
     print_and_flush("Creating Neural Networks... ");
     let mut ai_players: Vec<AIwithRating> = vec![
+        // TODO(fix): figure out why it's always inf/NaN.
         AIwithRating::new(AI::new_for_training(
             "Weighted Sum".to_string(),
             ChessNeuralNetwork::from_layers_specs(vec![
@@ -200,7 +201,7 @@ fn main() {
     println!("Playing {TOURNAMENTS_NUMBER} tournaments to set ratings...");
     set_ais_mode(&mut ai_players, AI_ThinkingDepth::Tournament);
     for i in 0..TOURNAMENTS_NUMBER {
-        let n = index_to_number(i);
+        let n = number_from_index(i);
         print_and_flush(format!("#{n}/{TOURNAMENTS_NUMBER}:\t"));
         play_tournament(
             &mut ai_players,
@@ -216,7 +217,7 @@ fn main() {
         println!();
         println!("AIs' ratings{maybe_after_n_tournaments_str}:");
         for (i, ai_player) in ai_players.iter().enumerate() {
-            let n = index_to_number(i);
+            let n = number_from_index(i);
             let rating = ai_player.get_rating().get();
             let name = ai_player.get_ai().get_name();
             println!("#{n}: {rating:.2} - {name}");
@@ -257,11 +258,11 @@ fn main() {
         let ai_to_play_with: NNTPW = match line.as_str() {
             CMD_QUIT_SHORT | CMD_QUIT_FULL => { break }
             CMD_LIST_SHORT | CMD_LIST_FULL => { print_ais_ratings(&ai_players, false); continue }
-            CMD_EXPORT_NN_AS_IMAGES_SHORT | CMD_EXPORT_NN_AS_IMAGES_FULL => { process_export_nn_as_images(&ai_players); continue }
+            CMD_EXPORT_NN_AS_IMAGES_SHORT | CMD_EXPORT_NN_AS_IMAGES_FULL => { process_export_nns_as_images(&ai_players); continue }
             CMD_BEST_STR => NNTPW::Best,
             CMD_WORST_STR => NNTPW::Worst,
             text => if let Ok(n) = text.parse::<usize>() {
-                let Some(i) = number_to_index_checked(n) else { continue };
+                let Some(i) = index_from_number_checked(n) else { println(error_msg::NUMBER_OUT_OF_RANGE); continue };
                 NNTPW::Index(i)
             } else {
                 let name = text.to_string();
@@ -271,8 +272,8 @@ fn main() {
         let ai_to_play_with: &AIwithRating = match ai_to_play_with {
             NNTPW::Best => ai_players.first().unwrap(),
             NNTPW::Worst => ai_players.last().unwrap(),
-            NNTPW::Index(index) => if let Some(ai) = ai_players.get(index) { ai } else { continue }
-            NNTPW::Name(name) => if let Some(ai) = ai_players.iter().find(|aip| aip.get_ai().get_name() == name) { ai } else { continue }
+            NNTPW::Index(index) => if let Some(ai) = ai_players.get(index) { ai } else { println(error_msg::NUMBER_OUT_OF_RANGE); continue }
+            NNTPW::Name(name) => if let Some(ai) = ai_players.iter().find(|aip| aip.get_ai().get_name() == name) { ai } else { println(error_msg::NN_WITH_PROVIDED_NAME_NOT_FOUND); continue }
         };
         let ai_to_play_with: BoxDynPlayer = Box::new(ai_to_play_with.get_ai());
         println!("Choose side to play:");
@@ -287,7 +288,7 @@ fn main() {
         let human_side_to_play: Color = match line.as_str() {
             CMD_SIDE_TO_PLAY_WHITE_SHORT | CMD_SIDE_TO_PLAY_WHITE_FULL => Color::White,
             CMD_SIDE_TO_PLAY_BLACK_SHORT | CMD_SIDE_TO_PLAY_BLACK_FULL => Color::Black,
-            _ => { continue } // ask everything from start again
+            _ => { println(error_msg::CANT_PARSE_INPUT_AS_COLOR); continue } // ask everything from start again
         };
         println!("Good luck! In any unclear situation use `s` to surrender or `q` to quit.");
         let (player_white, player_black): (BoxDynPlayer, BoxDynPlayer) = match human_side_to_play {
@@ -329,13 +330,13 @@ fn train_nns(ai_players: &mut Vec<AIwithRating>, train_and_test_data: TrainAndTe
                 let avg_train_error = train_step(ai_player.get_ai_mut().get_nn_mut(), &train_data, learning_rate);
                 let avg_test_error = calc_avg_test_error(&ai_player.get_ai().get_nn(), &test_data);
                 let is_to_remove = avg_train_error.is_nan() || avg_test_error.is_nan();
-                let n = index_to_number(i);
+                let n = number_from_index(i);
                 let name = ai_player.get_ai().get_name();
                 (is_to_remove, format!("NN#{n}\tavg train error = {avg_train_error}\tavg test error = {avg_test_error}\t{name}"))
                 // TODO(optimization): also return time spent training to then sort them by it for efficiency
             })
             .unzip();
-        let mut msg = format!("Epoch {epoch_number}/{TRAINING_EPOCHS}:\n", epoch_number=index_to_number(epoch));
+        let mut msg = format!("Epoch {epoch_number}/{TRAINING_EPOCHS}:\n", epoch_number=number_from_index(epoch));
         msg += &msg_parts.join("\n");
         println!("{msg}\n");
         if config.remove_ai_if_it_gives_nan {
@@ -1174,12 +1175,41 @@ fn get_datetime_now() -> String {
 }
 
 
-fn process_export_nn_as_images(ai_players: &Vec<AIwithRating>) {
+fn process_export_nns_as_images(ai_players: &Vec<AIwithRating>) {
+    enum NNsToExport {
+        ByNumber { n: usize },
+        All,
+    }
+    println!();
+    println!("Options to export NN(s):");
+    println!("- by number");
+    const CMD_EXPORT_ALL_SHORT: &str = "a";
+    const CMD_EXPORT_ALL_FULL : &str = "all";
+    println!("- all: `a` or `all`");
+    let line = prompt("Choose NN(s) to export: ");
+    let nns_to_export = match line.as_str() {
+        CMD_EXPORT_ALL_SHORT | CMD_EXPORT_ALL_FULL => NNsToExport::All,
+        text => if let Ok(n) = text.parse::<usize>() {
+            NNsToExport::ByNumber { n }
+        } else { println(error_msg::CANT_PARSE_INPUT_AS_NUMBER); return }
+    };
+    match nns_to_export {
+        NNsToExport::ByNumber { n } => {
+            let Some(index) = index_from_number_checked(n) else { println(error_msg::NUMBER_OUT_OF_RANGE); return };
+            let Some(ai_player) = ai_players.get(index) else { println(error_msg::NUMBER_OUT_OF_RANGE); return };
+            export_nn_as_images(ai_player);
+        }
+        NNsToExport::All => {
+            for ai_player in ai_players {
+                export_nn_as_images(ai_player);
+            }
+        }
+    }
+}
+
+
+fn export_nn_as_images(ai_player: &AIwithRating) {
     use std::{fs, io};
-    // TODO(enhancement): export all
-    let Ok(nn_number) = prompt("Choose NN number to export: ").parse::<usize>() else { println!("Can't parse input as integer."); return };
-    let nn_index = number_to_index(nn_number);
-    let Some(ai_player) = ai_players.get(nn_index) else { println!("Number out of bounds."); return };
 
     let ai = ai_player.get_ai();
     let ai_name = ai.get_name().replace(' ', "_");
@@ -1240,8 +1270,9 @@ mod weights_matrix_to_image_smart {
 
     use super::*; // TODO(refactor): write explicit `use`s.
 
-    const SPACING_MAJOR: usize = 20;
-    const SPACING_MINOR: usize = 10;
+    // TODO(refactor): make them params that are asked during asking export params.
+    const SPACING_MAJOR: usize = 10;
+    const SPACING_MINOR: usize = 4;
     const SPACING_SUB_MINOR: usize = 2;
 
     const NUMBER_OF_FILES_RANKS: usize = 8;
@@ -1288,7 +1319,7 @@ mod weights_matrix_to_image_smart {
 
         // TODO: SWAP ROWS/COLS IF SPECIFIC ARRANGEMENT
 
-        println!("boards.shape = {:?}", boards.shape());
+        // println!("boards.shape = {:?}", boards.shape());
         let (boards_flatten_rows, boards_flatten_cols) = (boards_rows*_8, boards_cols*_8);
         let mut boards_flatten = DMatrix::<float>::from_iterator(boards_flatten_rows, boards_flatten_cols,
             boards
@@ -1297,7 +1328,7 @@ mod weights_matrix_to_image_smart {
                 .flatten()
                 .copied()
         );
-        println!("boards_flatten.shape = {:?}", boards_flatten.shape());
+        // println!("boards_flatten.shape = {:?}", boards_flatten.shape());
 
         // TODO(refactor): extract spacing into mathod.
         for w in (1..boards_flatten_cols).rev() {
@@ -1521,17 +1552,19 @@ mod benchmarks {
 
 
 
-fn index_to_number(i: usize) -> usize {
+fn number_from_index(i: usize) -> usize {
     // bc if index is 0 then it's number 1, 1=>2, 2=>3, and so on
     i + 1
 }
-fn number_to_index(n: usize) -> usize {
+#[deprecated = "Use `number_to_index_checked` instead."]
+fn index_from_number(n: usize) -> usize {
     assert!(n > 0);
     // bc if index is 0 then it's number 1, 1=>2, 2=>3, and so on
     n - 1
 }
-fn number_to_index_checked(n: usize) -> Option<usize> {
-    if n > 0 { Some(number_to_index(n)) } else { None }
+fn index_from_number_checked(n: usize) -> Option<usize> {
+    #[allow(deprecated)]
+    if n > 0 { Some(index_from_number(n)) } else { None }
 }
 
 
@@ -1601,6 +1634,14 @@ fn const_assert_number_of_different_chess_pieces_eq_6() {
 #[test]
 fn const_assert_number_of_squares_on_chess_board_eq_64() {
     assert_eq!(64, NUMBER_OF_SQUARES_ON_CHESS_BOARD);
+}
+
+
+mod error_msg {
+    pub const CANT_PARSE_INPUT_AS_COLOR: &str = "Can't parse input as color.";
+    pub const CANT_PARSE_INPUT_AS_NUMBER: &str = "Can't parse input as number.";
+    pub const NN_WITH_PROVIDED_NAME_NOT_FOUND: &str = "NN with provided name not found.";
+    pub const NUMBER_OUT_OF_RANGE: &str = "Number out of range.";
 }
 
 
