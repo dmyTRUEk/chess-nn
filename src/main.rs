@@ -66,6 +66,7 @@ use crate::{
         rating::update_ratings,
     },
     utils_io::{print_and_flush, println, prompt, wait_for_enter},
+    weights_matrix_to_image_smart::Spacing,
 };
 
 
@@ -1193,22 +1194,37 @@ fn process_export_nns_as_images(ai_players: &Vec<AIwithRating>) {
             NNsToExport::ByNumber { n }
         } else { println(error_msg::CANT_PARSE_INPUT_AS_NUMBER); return }
     };
+    let line = prompt(&format!(
+        "Choose spacings for smart images, default: ({},{},{}): ",
+        Spacing::DEFAULT_MAJOR, Spacing::DEFAULT_MINOR, Spacing::DEFAULT_SUB_MINOR
+    ));
+    let spacing = match line.as_str() {
+        "" | "default" => Spacing::default(),
+        text => {
+            let parts: Vec<&str> = text.split(',').collect();
+            let [major, minor, sub_minor] = parts.as_slice() else { println(error_msg::WRONG_NUMBER_OF_SPACINGS_PROVIDED); return };
+            let Ok(major) = major.parse::<usize>() else { println(error_msg::cant_parse_input_as_number_at_index(0)); return };
+            let Ok(minor) = minor.parse::<usize>() else { println(error_msg::cant_parse_input_as_number_at_index(1)); return };
+            let Ok(sub_minor) = sub_minor.parse::<usize>() else { println(error_msg::cant_parse_input_as_number_at_index(2)); return };
+            Spacing { major, minor, sub_minor }
+        }
+    };
     match nns_to_export {
         NNsToExport::ByNumber { n } => {
             let Some(index) = index_from_number_checked(n) else { println(error_msg::NUMBER_OUT_OF_RANGE); return };
             let Some(ai_player) = ai_players.get(index) else { println(error_msg::NUMBER_OUT_OF_RANGE); return };
-            export_nn_as_images(ai_player);
+            export_nn_as_images(ai_player, spacing);
         }
         NNsToExport::All => {
             for ai_player in ai_players {
-                export_nn_as_images(ai_player);
+                export_nn_as_images(ai_player, spacing);
             }
         }
     }
 }
 
 
-fn export_nn_as_images(ai_player: &AIwithRating) {
+fn export_nn_as_images(ai_player: &AIwithRating, spacing: Spacing) {
     use std::{fs, io};
 
     let ai = ai_player.get_ai();
@@ -1232,10 +1248,10 @@ fn export_nn_as_images(ai_player: &AIwithRating) {
 
             if i == 0 {
                 use weights_matrix_to_image_smart::{Arrangement, convert};
-                const DEBUG: bool = true;
+                const DEBUG: bool = false;
                 for arrangement in Arrangement::ALL {
                     let file_name_wm_smart = format!("{export_dir_name}/layer_{i:02}_smart_{arrangement:?}.png");
-                    let img = convert::<DEBUG>(weights_matrix, Some(arrangement));
+                    let img = convert::<DEBUG>(weights_matrix, Some(arrangement), spacing);
                     let ImageResult::Ok(()) = img.save(file_name_wm_smart) else { println!("Can't save the smart image#{i}."); continue };
                 }
             }
@@ -1270,11 +1286,6 @@ mod weights_matrix_to_image_smart {
 
     use super::*; // TODO(refactor): write explicit `use`s.
 
-    // TODO(refactor): make them params that are asked during asking export params.
-    const SPACING_MAJOR: usize = 10;
-    const SPACING_MINOR: usize = 4;
-    const SPACING_SUB_MINOR: usize = 2;
-
     const NUMBER_OF_FILES_RANKS: usize = 8;
 
     // TODO?: REMOVE
@@ -1282,7 +1293,11 @@ mod weights_matrix_to_image_smart {
     const _8 : usize = NUMBER_OF_FILES_RANKS;
     const _6 : usize = NUMBER_OF_DIFFERENT_CHESS_PIECES;
 
-    pub fn convert<const DEBUG: bool>(weights_matrix: &Matrix, arrangement: Option<Arrangement>) -> RgbImage {
+    pub fn convert<const DEBUG: bool>(
+        weights_matrix: &Matrix,
+        arrangement: Option<Arrangement>,
+        spacing: Spacing,
+    ) -> RgbImage {
         use Arrangement::*;
 
         let arrangement = arrangement.unwrap_or_default();
@@ -1319,7 +1334,7 @@ mod weights_matrix_to_image_smart {
 
         // TODO: SWAP ROWS/COLS IF SPECIFIC ARRANGEMENT
 
-        // println!("boards.shape = {:?}", boards.shape());
+        if DEBUG { println!("boards.shape = {:?}", boards.shape()) }
         let (boards_flatten_rows, boards_flatten_cols) = (boards_rows*_8, boards_cols*_8);
         let mut boards_flatten = DMatrix::<float>::from_iterator(boards_flatten_rows, boards_flatten_cols,
             boards
@@ -1328,50 +1343,50 @@ mod weights_matrix_to_image_smart {
                 .flatten()
                 .copied()
         );
-        // println!("boards_flatten.shape = {:?}", boards_flatten.shape());
+        if DEBUG { println!("boards_flatten.shape = {:?}", boards_flatten.shape()) }
 
         // TODO(refactor): extract spacing into mathod.
         for w in (1..boards_flatten_cols).rev() {
             let spacing = match arrangement {
                 Y_Colors_X_OutputsPieces => {
                     match w.mod_div(_8) {
-                        (0, w_div_8) if w_div_8.is_divisible_by(pieces) => SPACING_MINOR,
-                        (0, _) => SPACING_SUB_MINOR,
+                        (0, w_div_8) if w_div_8.is_divisible_by(pieces) => spacing.minor,
+                        (0, _) => spacing.sub_minor,
                         _ => 0
                     }
                 }
                 Y_Colors_X_PiecesOutputs => {
                     match w.mod_div(_8) {
-                        (0, w_div_8) if w_div_8.is_divisible_by(outputs) => SPACING_MINOR,
-                        (0, _) => SPACING_SUB_MINOR,
+                        (0, w_div_8) if w_div_8.is_divisible_by(outputs) => spacing.minor,
+                        (0, _) => spacing.sub_minor,
                         _ => 0
                     }
                 }
                 Y_Outputs_X_ColorsPieces => {
                     match w.mod_div(_8) {
-                        (0, w_div_8) if w_div_8.is_divisible_by(pieces) => SPACING_MINOR,
-                        (0, _) => SPACING_SUB_MINOR,
+                        (0, w_div_8) if w_div_8.is_divisible_by(pieces) => spacing.minor,
+                        (0, _) => spacing.sub_minor,
                         _ => 0
                     }
                 }
                 Y_Outputs_X_PiecesColors => {
                     match w.mod_div(_8) {
-                        (0, w_div_8) if w_div_8.is_divisible_by(colors) => SPACING_MINOR,
-                        (0, _) => SPACING_SUB_MINOR,
+                        (0, w_div_8) if w_div_8.is_divisible_by(colors) => spacing.minor,
+                        (0, _) => spacing.sub_minor,
                         _ => 0
                     }
                 }
                 Y_Pieces_X_ColorsOutputs => {
                     match w.mod_div(_8) {
-                        (0, w_div_8) if w_div_8.is_divisible_by(outputs) => SPACING_MINOR,
-                        (0, _) => SPACING_SUB_MINOR,
+                        (0, w_div_8) if w_div_8.is_divisible_by(outputs) => spacing.minor,
+                        (0, _) => spacing.sub_minor,
                         _ => 0
                     }
                 }
                 Y_Pieces_X_OutputsColors => {
                     match w.mod_div(_8) {
-                        (0, w_div_8) if w_div_8.is_divisible_by(colors) => SPACING_MINOR,
-                        (0, _) => SPACING_SUB_MINOR,
+                        (0, w_div_8) if w_div_8.is_divisible_by(colors) => spacing.minor,
+                        (0, _) => spacing.sub_minor,
                         _ => 0
                     }
                 }
@@ -1382,9 +1397,9 @@ mod weights_matrix_to_image_smart {
         // TODO(refactor)?: extract spacing into mathod.
         for h in (1..boards_flatten_rows).rev() {
             let spacing = match arrangement {
-                Y_Colors_X_OutputsPieces | Y_Colors_X_PiecesOutputs => if h.is_divisible_by(_8) { SPACING_MAJOR } else { 0 }
-                Y_Outputs_X_ColorsPieces | Y_Outputs_X_PiecesColors => if h.is_divisible_by(_8) { SPACING_MAJOR } else { 0 }
-                Y_Pieces_X_ColorsOutputs | Y_Pieces_X_OutputsColors => if h.is_divisible_by(_8) { SPACING_MAJOR } else { 0 }
+                Y_Colors_X_OutputsPieces | Y_Colors_X_PiecesOutputs => if h.is_divisible_by(_8) { spacing.major } else { 0 }
+                Y_Outputs_X_ColorsPieces | Y_Outputs_X_PiecesColors => if h.is_divisible_by(_8) { spacing.major } else { 0 }
+                Y_Pieces_X_ColorsOutputs | Y_Pieces_X_OutputsColors => if h.is_divisible_by(_8) { spacing.major } else { 0 }
             };
             boards_flatten = boards_flatten.insert_rows(h, spacing, 0.);
         }
@@ -1402,6 +1417,23 @@ mod weights_matrix_to_image_smart {
         }
 
         img
+    }
+
+    #[derive(Clone, Copy)]
+    pub struct Spacing {
+        pub major: usize,
+        pub minor: usize,
+        pub sub_minor: usize,
+    }
+    impl Spacing {
+        pub const DEFAULT_MAJOR: usize = 10;
+        pub const DEFAULT_MINOR: usize = 4;
+        pub const DEFAULT_SUB_MINOR: usize = 2;
+    }
+    impl Default for Spacing {
+        fn default() -> Self {
+            Self { major: Self::DEFAULT_MAJOR, minor: Self::DEFAULT_MINOR, sub_minor: Self::DEFAULT_SUB_MINOR }
+        }
     }
 
     /// DC = Depth Channel
@@ -1642,6 +1674,11 @@ mod error_msg {
     pub const CANT_PARSE_INPUT_AS_NUMBER: &str = "Can't parse input as number.";
     pub const NN_WITH_PROVIDED_NAME_NOT_FOUND: &str = "NN with provided name not found.";
     pub const NUMBER_OUT_OF_RANGE: &str = "Number out of range.";
+    pub const WRONG_NUMBER_OF_SPACINGS_PROVIDED: &str = "Wrong number of spacings provided.";
+    pub fn cant_parse_input_as_number_at_index(index: usize) -> String {
+        let cant_parse_input_as_number_without_dot_at_end = CANT_PARSE_INPUT_AS_NUMBER.trim_end_matches('.');
+        format!("{cant_parse_input_as_number_without_dot_at_end} {index}")
+    }
 }
 
 
