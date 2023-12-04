@@ -15,6 +15,7 @@ impl Human {
     fn select_move(&self, board: Board) -> MaybeChessMove {
         const CMD_QUIT: &str = "q";
         const CMD_SURRENDER: &str = "s";
+        // TODO(feat): undo move
         loop {
             let line = prompt("Your move: ");
             match line.as_str() {

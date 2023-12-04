@@ -73,6 +73,7 @@ use crate::{
 
 // TODO(refactor): separate consts into local(here) modules
 
+// TODO: try very small dataset, to see if they can at least remember positions.
 const FILENAMES_ALL_DATA: &[&str] = &[
     // "positions/lt_part1_evaluated_2023-11-11_00-18-58",
     // "positions/lt_part2_evaluated_2023-11-12_12-48-37",
@@ -306,8 +307,8 @@ fn main() {
         println!(
             "{who_vs_who}: winner={winner:?}, moves: ' {moves} '\n",
             who_vs_who = match human_side_to_play {
-                Color::White => "HUMAN vs NN_BEST",
-                Color::Black => "NN_BEST vs HUMAN",
+                Color::White => "HUMAN vs NN_BEST", // TODO(fix): not "NN_BEST".
+                Color::Black => "NN_BEST vs HUMAN", // TODO(fix): not "NN_BEST".
             },
             moves = game_moves.unwrap_or(MOVES_WASNT_PROVIDED.to_string()),
         );
