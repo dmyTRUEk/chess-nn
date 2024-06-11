@@ -219,7 +219,6 @@ dependencies = [
  "chess",
  "chrono",
  "image",
- "lazy_static",
  "nalgebra",
  "rand 0.8.5",
  "rayon",
@@ -540,12 +539,6 @@ checksum = "cee9c64da59eae3b50095c18d3e74f8b73c0b86d2792824ff01bbce68ba229ca"
 dependencies = [
  "wasm-bindgen",
 ]
-
-[[package]]
-name = "lazy_static"
-version = "1.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e2abad23fbc42b3700f2f279844dc832adb2b2eb069b2df918f455c4e18cc646"
 
 [[package]]
 name = "lebe"
