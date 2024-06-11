@@ -5,7 +5,6 @@
 	// array_windows,
 	// adt_const_params,
 	// const_trait_impl,
-	file_create_new,
 	get_many_mut,
 	iter_array_chunks,
 	iter_map_windows,
