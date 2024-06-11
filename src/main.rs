@@ -368,6 +368,7 @@ fn train_step(nn: &mut ChessNeuralNetwork, train_data_shuffled: &AnyData, learni
         }
         // panic!();
     }
+    // TODO?: fix `avg_error` calculation.
     let avg_error = total_error / (train_data_shuffled.xy.len() as float);
     avg_error.sqrt()
 }
@@ -379,6 +380,7 @@ fn calc_avg_test_error(nn: &ChessNeuralNetwork, test_data: &AnyData) -> float {
         total_error += nn.loss(output, *y);
         if total_error.is_nan() { return float::NAN }
     }
+    // TODO?: fix `avg_error` calculation.
     let avg_error = total_error / (test_data.xy.len() as float);
     avg_error.sqrt()
 }
