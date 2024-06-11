@@ -1175,7 +1175,7 @@ fn get_datetime_now() -> String {
 	let milis  = now.format("%3f");
 	// let micros = now.format("%6f");
 	// let nanos  = now.format("%9f");
-	format!("{year}-{month}-{day}_{hour}:{minute}:{second}.{milis}")
+	format!("{year}-{month}-{day}_{hour}-{minute}-{second}.{milis}")
 }
 
 
